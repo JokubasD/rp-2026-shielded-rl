@@ -15,7 +15,7 @@ class Agent:
         self.perception = State(width, height)
         self.x = x
         self.y = y
-        self.perception.agents.matrix[y][x] = 1
+        self.perception.agents[y][x] = 1
         self.world_width = width
         self.world_height = height
 
@@ -34,7 +34,7 @@ class Agent:
         """
 
 
-        self.perception.agents.matrix[self.y][self.x] = 0
+        self.perception.agents[self.y][self.x] = 0
 
         match direction:
             case AgentAction.MOVE_UP:
@@ -46,7 +46,7 @@ class Agent:
             case AgentAction.MOVE_RIGHT:
                 self.x += 1
         
-        self.perception.agents.matrix[self.y][self.x] = 1
+        self.perception.agents[self.y][self.x] = 1
 
     # Individual per our research question
     # Can be overwritten in a subclass by just redefining the function
