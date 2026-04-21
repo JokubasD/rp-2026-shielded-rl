@@ -1,8 +1,10 @@
+from copy import deepcopy
 from dataclasses import dataclass
 import random
 import numpy as np
 import matplotlib.pyplot as plt
 from .state import State
+from .agent import *
 
 TRAVERSIBLE = 0
 UNTRAVERSIBLE = 1
@@ -27,13 +29,66 @@ class MapConfig:
     num_victims: int = 2
 
 class Simulator:
-    def __init__(self, width, height):
+    def __init__(self, width: int, height: int):
         self.width = width
         self.height = height
-        self.agents = []
+        self.agents: list[Agent] = []
         self.ground_truth = State(width, height)
-    
 
+    def add_agent(self, agent: Agent) -> None:
+        """
+        Adds an agent to the simulation and updates the ground truth
+
+        Parameters:
+        agent: The agent to add
+        """
+        self.agents.append(agent)
+        self.ground_truth.agents.matrix[agent.y][agent.x] = 1
+
+    def step(self) -> State:
+        """
+        Performs a single step of the simulation.
+        This includes agent actions, environment actions, and updating the ground truth.
+
+        Returns:
+        The ground truth state after the step.
+        """
+        # Perform agent actions
+        for agent in self.agents:
+            action = agent.get_action()
+            is_move = action < 4
+            
+            if is_move:
+                self.ground_truth.agents.matrix[agent.y][agent.x] = 0
+                agent.move(action)
+                self.ground_truth.agents.matrix[agent.y][agent.x] = 1
+            
+            elif action == AgentAction.SCAN:
+                agent.scan(self.ground_truth)
+
+        # Perform environment actions (firespread, etc.)
+
+        # Don't let the returned state modify current state
+        result = deepcopy(self.ground_truth)
+        return result 
+
+    def run(self, steps: int) -> list[State]:
+        """
+        Performs a number of steps of the simulation.
+
+        Parameters:
+        steps: The number of steps to perform
+
+        Returns:
+        A list of the ground truth states after each step.
+        list[0] is the initial state before the sim is run
+        """
+        record: list[State] = []
+        record.append(deepcopy(self.ground_truth))
+        for _ in range(steps):
+            record.append(self.step())
+        return record
+    
     def generate_ground_truth(self, config: MapConfig = None) -> None:
         if config is None:
             config = MapConfig()
@@ -49,8 +104,6 @@ class Simulator:
         self.ground_truth.victims = place_victims(self.width, self.height, config.num_victims, rooms, self.ground_truth.agents)
         self.ground_truth.confidence.matrix = np.ones((self.height, self.width))
         return
-
-
 
 def generate_traversability_matrix(x, y, n, u_p, w_min, w_max, l_min, l_max, t_min, t_max) -> tuple[np.ndarray, list[dict]]:
     """
