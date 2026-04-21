@@ -26,7 +26,7 @@ class Agent:
         pass
 
     # Update internal position (x, y), as well as perceived agent state.
-    def move(self, direction: AgentAction):
+    def move(self, direction: AgentAction) -> None:
         self.perception.agents.matrix[self.y][self.x] = 0
 
         match direction:
@@ -43,5 +43,5 @@ class Agent:
 
     # Individual per our research question
     # Can be overwritten in a subclass by just redefining the function
-    def get_action(self): # AgentAction
+    def get_action(self) -> AgentAction:
         return AgentAction.MOVE_RIGHT

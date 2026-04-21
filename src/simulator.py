@@ -13,7 +13,7 @@ class Simulator:
 
 
     # Adds an agent to the simulation
-    def add_agent(self, agent: Agent):
+    def add_agent(self, agent: Agent) -> None:
         self.agents.append(agent)
         self.ground_truth.agents.matrix[agent.y][agent.x] = 1
 
@@ -22,7 +22,7 @@ class Simulator:
     # Performs a single step of the simulation.
     # This includes agent actions, environment actions, and updating the ground truth.
     # Returns the ground truth state after the step.
-    def step(self):
+    def step(self) -> State:
         # Perform agent actions
         for agent in self.agents:
             action = agent.get_action()
@@ -44,7 +44,7 @@ class Simulator:
 
     # Performs a number of steps of the simulation.
     # Returns a list of the ground truth states after each step.
-    def run(self, steps: int):
+    def run(self, steps: int) -> list[State]:
         record: list[State] = []
         for _ in range(steps):
             record.append(self.step())
