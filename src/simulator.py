@@ -59,8 +59,10 @@ class Simulator:
 
         Returns:
         A list of the ground truth states after each step.
+        list[0] is the initial state before the sim is run
         """
         record: list[State] = []
+        record.append(deepcopy(self.ground_truth))
         for _ in range(steps):
             record.append(self.step())
         return record
