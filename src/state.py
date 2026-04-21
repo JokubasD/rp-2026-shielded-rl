@@ -1,4 +1,4 @@
-from grid import Grid
+from .grid import Grid
 
 class State:
     def __init__(self, width, height):
