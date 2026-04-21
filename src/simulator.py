@@ -11,18 +11,26 @@ class Simulator:
         self.ground_truth = State(width, height)
 
 
-
-    # Adds an agent to the simulation
     def add_agent(self, agent: Agent) -> None:
+        """
+        Adds an agent to the simulation and updates the ground truth
+
+        Parameters:
+        agent: The agent to add
+        """
         self.agents.append(agent)
         self.ground_truth.agents.matrix[agent.y][agent.x] = 1
 
 
 
-    # Performs a single step of the simulation.
-    # This includes agent actions, environment actions, and updating the ground truth.
-    # Returns the ground truth state after the step.
     def step(self) -> State:
+        """
+        Performs a single step of the simulation.
+        This includes agent actions, environment actions, and updating the ground truth.
+
+        Returns:
+        The ground truth state after the step.
+        """
         # Perform agent actions
         for agent in self.agents:
             action = agent.get_action()
@@ -42,9 +50,16 @@ class Simulator:
         result = deepcopy(self.ground_truth)
         return result 
 
-    # Performs a number of steps of the simulation.
-    # Returns a list of the ground truth states after each step.
     def run(self, steps: int) -> list[State]:
+        """
+        Performs a number of steps of the simulation.
+
+        Parameters:
+        steps: The number of steps to perform
+
+        Returns:
+        A list of the ground truth states after each step.
+        """
         record: list[State] = []
         for _ in range(steps):
             record.append(self.step())

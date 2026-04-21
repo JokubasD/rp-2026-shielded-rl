@@ -25,8 +25,15 @@ class Agent:
     def scan(self, state: State):
         pass
 
-    # Update internal position (x, y), as well as perceived agent state.
     def move(self, direction: AgentAction) -> None:
+        """
+        Updates an agent's internal position based on an action
+
+        Parameters:
+        direction: The action to perform
+        """
+
+
         self.perception.agents.matrix[self.y][self.x] = 0
 
         match direction:
@@ -44,4 +51,10 @@ class Agent:
     # Individual per our research question
     # Can be overwritten in a subclass by just redefining the function
     def get_action(self) -> AgentAction:
+        """
+        To be overwritten for each research question.
+
+        Returns:
+        The action the agent wants to perform given its internal perception matrix
+        """
         return AgentAction.MOVE_RIGHT
