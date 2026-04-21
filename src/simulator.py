@@ -1,5 +1,5 @@
-from state import State
-from agent import *
+from .state import State
+from .agent import *
 
 from copy import deepcopy
 

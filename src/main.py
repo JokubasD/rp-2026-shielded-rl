@@ -1,5 +1,5 @@
-from simulator import Simulator
-from agent import *
+from .simulator import Simulator
+from .agent import *
 
 WIDTH = 4
 HEIGHT = 3
