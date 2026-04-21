@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import random
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,6 +13,19 @@ AGENT_PRESENT = 1
 VICTIM_NOT_PRESENT = 0
 VICTIM_PRESENT = 1
 
+@dataclass
+class MapConfig:
+    num_rooms: int = 4
+    unconnected_probability: float = 0.0
+    min_room_width: int = 6
+    max_room_width: int = 12
+    min_room_length: int = 6
+    max_room_length: int = 12
+    min_tunnel_thickness: int = 1
+    max_tunnel_thickness: int = 3
+    num_agents: int = 0
+    num_victims: int = 2
+
 class Simulator:
     def __init__(self, width, height):
         self.width = width
@@ -20,27 +34,35 @@ class Simulator:
         self.ground_truth = State(width, height)
     
 
-    def generate_ground_truth(self): # TODO add parameters to tweak generation
+    def generate_ground_truth(self, config: MapConfig = None) -> None:
+        if config is None:
+            config = MapConfig()
+        
         # generates and sets the 2D grid with agent and victims, currently with preset values.
-        self.ground_truth.traversability.matrix, rooms = generate_traversability_matrix(self.width, self.height, 4, 0, 6, 12, 6, 12, 1, 3)
-        self.ground_truth.agents, self.ground_truth.victims = place_agents_and_victims(self.width, self.height, 1, 2, rooms)
+        self.ground_truth.traversability.matrix, rooms = generate_traversability_matrix(self.width, self.height, 
+                                                                                        config.num_rooms, config.unconnected_probability, 
+                                                                                        config.min_room_width, config.max_room_width, 
+                                                                                        config.min_room_length, config.max_room_length, 
+                                                                                        config.min_tunnel_thickness, config.max_tunnel_thickness)
+        
+        self.ground_truth.agents = place_agents(self.width, self.height, config.num_agents, rooms, self.ground_truth.victims)
+        self.ground_truth.victims = place_victims(self.width, self.height, config.num_victims, rooms, self.ground_truth.agents)
         self.ground_truth.confidence.matrix = np.ones((self.height, self.width))
         return
 
 
 
-def generate_traversability_matrix(x, y, n, u_p, w_min, w_max, l_min, l_max, t_min, t_max):
+def generate_traversability_matrix(x, y, n, u_p, w_min, w_max, l_min, l_max, t_min, t_max) -> tuple[np.ndarray, list[dict]]:
     """
     Generates 2D traversability matrix with rooms and connecting corridors, and returns the room bounds and the matrix.
     
     Parameters:
-    k: Number of maps to generate
     x, y: Dimensions of the grid
     n: Number of rooms
     u_p: (unconnected_probability) The probability a room is unconnected
-    t_min, t_max: Min/Max thickness of the paths
     w_min, w_max: Min/Max width of the rooms
     l_min, l_max: Min/Max length of the rooms
+    t_min, t_max: Min/Max thickness of the tunnels
     """
 
     if not (0 <= u_p <= 1):
@@ -113,19 +135,19 @@ def generate_traversability_matrix(x, y, n, u_p, w_min, w_max, l_min, l_max, t_m
 
     return matrix, rooms
 
-def place_agents_and_victims(x, y, n, k, rooms):
+
+def place_agents(x, y, n, rooms, victims) -> np.ndarray:
     """
-    Places agents and victims in rooms.
+    Places agents in rooms.
 
     Parameters:
     x, y: Dimensions of the grid
     n: Number of agents
-    k: Number of victims
     rooms: A list of rooms with center and bounds
+    victims: A matrix indicating the presence of victims (to avoid placing agents on top of victims)
     """
 
     agents = np.full((y, x), AGENT_NOT_PRESENT)
-    victims = np.full((y, x), VICTIM_NOT_PRESENT)
 
     room_n = len(rooms)
 
@@ -135,11 +157,27 @@ def place_agents_and_victims(x, y, n, k, rooms):
         y_range = random_room['y_range']
         random_x = random.randint(x_range[0], x_range[1] - 1)
         random_y = random.randint(y_range[0], y_range[1] - 1)
-        while (agents[random_y, random_x] == AGENT_PRESENT):
+        while (agents[random_y, random_x] == AGENT_PRESENT or victims[random_y, random_x] == VICTIM_PRESENT):
             random_x = random.randint(x_range[0], x_range[1] - 1)
             random_y = random.randint(y_range[0], y_range[1] - 1)
         agents[random_y, random_x] = AGENT_PRESENT
     
+    return agents
+
+def place_victims(x, y, k, rooms, agents) -> np.ndarray:
+    """
+    Places victims in rooms.
+
+    Parameters:
+    x, y: Dimensions of the grid
+    k: Number of victims
+    rooms: A list of rooms with center and bounds
+    agents: A matrix indicating the presence of agents (to avoid placing victims on top of agents)
+    """
+
+    victims = np.full((y, x), VICTIM_NOT_PRESENT)
+    room_n = len(rooms)
+
     for j in range(k):
         random_room = rooms[random.randint(0, room_n - 1)]
         x_range = random_room['x_range']
@@ -150,10 +188,11 @@ def place_agents_and_victims(x, y, n, k, rooms):
             random_x = random.randint(x_range[0], x_range[1] - 1)
             random_y = random.randint(y_range[0], y_range[1] - 1)
         victims[random_y, random_x] = VICTIM_PRESENT
-        
-    return agents, victims
 
-def visualize_grid_gen(matrix, agents, victims):
+    return victims
+
+
+def visualize_grid_gen(matrix, agents, victims) -> None:
     """
     Visualizes the map, agents, and victims in a single plot.
     """
