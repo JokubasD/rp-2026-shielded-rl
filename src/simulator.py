@@ -24,6 +24,7 @@ class Simulator:
         # generates and sets the 2D grid with agent and victims, currently with preset values.
         self.ground_truth.traversability.matrix, rooms = generate_traversability_matrix(self.width, self.height, 4, 0, 6, 12, 6, 12, 1, 3)
         self.ground_truth.agents, self.ground_truth.victims = place_agents_and_victims(self.width, self.height, 1, 2, rooms)
+        self.ground_truth.confidence.matrix = np.ones((self.height, self.width))
         return
 
 
@@ -45,7 +46,7 @@ def generate_traversability_matrix(x, y, n, u_p, w_min, w_max, l_min, l_max, t_m
     if not (0 <= u_p <= 1):
         raise ValueError(f"probability of unconnected rooms should be between 0 and 1 but was: {u_p}")
     
-    matrix = np.full((x, y), UNTRAVERSIBLE)
+    matrix = np.full((y, x), UNTRAVERSIBLE)
     room_seeds = np.zeros((2, n), dtype=int)
     rooms = []
 
@@ -70,7 +71,7 @@ def generate_traversability_matrix(x, y, n, u_p, w_min, w_max, l_min, l_max, t_m
         y_start = max(0, f - half_random_length)
         y_end = min(y, f + half_random_length + 1)
 
-        matrix[x_start:x_end, y_start:y_end] = TRAVERSIBLE
+        matrix[y_start:y_end, x_start:x_end] = TRAVERSIBLE
         rooms.append({
             'x_range': (x_start, x_end),
             'y_range': (y_start, y_end),
@@ -92,23 +93,23 @@ def generate_traversability_matrix(x, y, n, u_p, w_min, w_max, l_min, l_max, t_m
                 x_slice = get_slice(a_x, b_x)
                 y_start = max(0, a_y - half_tunnel_width)
                 y_end = min(y, a_y + half_tunnel_width + 1)
-                matrix[x_slice, y_start:y_end] = TRAVERSIBLE
+                matrix[y_start:y_end, x_slice] = TRAVERSIBLE
                 
                 x_start = max(0, b_x - half_tunnel_width)
                 x_end = min(x, b_x + half_tunnel_width + 1)
                 y_slice = get_slice(a_y, b_y)
-                matrix[x_start:x_end, y_slice] = TRAVERSIBLE
+                matrix[y_slice, x_start:x_end] = TRAVERSIBLE
             else:
                 x_start = max(0, a_x - half_tunnel_width)
                 x_end = min(x, a_x + half_tunnel_width + 1)
                 y_slice = get_slice(a_y, b_y)
-                matrix[x_start:x_end, y_slice] = TRAVERSIBLE
+                matrix[y_slice, x_start:x_end] = TRAVERSIBLE
                 
                 # Line 23: Horizontal to B (Fixed coordinates typo from pseudocode)
                 x_slice = get_slice(a_x, b_x)
                 y_start = max(0, b_y - half_tunnel_width)
                 y_end = min(y, b_y + half_tunnel_width + 1)
-                matrix[x_slice, y_start:y_end] = TRAVERSIBLE
+                matrix[y_start:y_end, x_slice] = TRAVERSIBLE
 
     return matrix, rooms
 
@@ -123,8 +124,8 @@ def place_agents_and_victims(x, y, n, k, rooms):
     rooms: A list of rooms with center and bounds
     """
 
-    agents = np.full((x, y), AGENT_NOT_PRESENT)
-    victims = np.full((x, y), VICTIM_NOT_PRESENT)
+    agents = np.full((y, x), AGENT_NOT_PRESENT)
+    victims = np.full((y, x), VICTIM_NOT_PRESENT)
 
     room_n = len(rooms)
 
@@ -134,8 +135,10 @@ def place_agents_and_victims(x, y, n, k, rooms):
         y_range = random_room['y_range']
         random_x = random.randint(x_range[0], x_range[1] - 1)
         random_y = random.randint(y_range[0], y_range[1] - 1)
-        if (agents[random_x][random_y] == AGENT_NOT_PRESENT):
-            agents[random_x][random_y] = AGENT_PRESENT
+        while (agents[random_y, random_x] == AGENT_PRESENT):
+            random_x = random.randint(x_range[0], x_range[1] - 1)
+            random_y = random.randint(y_range[0], y_range[1] - 1)
+        agents[random_y, random_x] = AGENT_PRESENT
     
     for j in range(k):
         random_room = rooms[random.randint(0, room_n - 1)]
@@ -143,8 +146,10 @@ def place_agents_and_victims(x, y, n, k, rooms):
         y_range = random_room['y_range']
         random_x = random.randint(x_range[0], x_range[1] - 1)
         random_y = random.randint(y_range[0], y_range[1] - 1)
-        if (victims[random_x][random_y] == VICTIM_NOT_PRESENT):
-            victims[random_x][random_y] = VICTIM_PRESENT
+        while (victims[random_y, random_x] == VICTIM_PRESENT or agents[random_y, random_x] == AGENT_PRESENT):
+            random_x = random.randint(x_range[0], x_range[1] - 1)
+            random_y = random.randint(y_range[0], y_range[1] - 1)
+        victims[random_y, random_x] = VICTIM_PRESENT
         
     return agents, victims
 

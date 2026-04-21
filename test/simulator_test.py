@@ -1,5 +1,4 @@
 import unittest
-import matplotlib.pyplot as plt
 
 from src.simulator import Simulator, visualize_grid_gen
 
