@@ -60,3 +60,5 @@ class TestAgentMove(unittest.TestCase):
         agnt.move(AgentAction.MOVE_UP)
         agnt.move(AgentAction.MOVE_RIGHT)
         self.assertEqual(agnt.move_history, [(1, 1), (1, 0), (2, 0)])
+
+# class TestAgentScan(unittest.TestCase):
