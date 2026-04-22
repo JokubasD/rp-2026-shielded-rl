@@ -24,7 +24,7 @@ class Agent:
         self.scan_accuracy = scan_accuracy # Scan accuracy [0,1]
         self.scan_radius = scan_radius # How far the agent can see when it scans
 
-        self.trajectory: list[tuple[int, int]] = [(x, y)] # Maintain a log of what positions the agent has been in for stats
+        self.move_history: list[tuple[int, int]] = [(x, y)] # Maintain a log of what positions the agent has been in for stats
 
         self.illegal_moves = 0
 
@@ -62,7 +62,7 @@ class Agent:
 
         self.perception.agents[self.y][self.x] = 0
         self.x, self.y = target_x, target_y
-        self.trajectory.append((self.x, self.y))
+        self.move_history.append((self.x, self.y))
         self.perception.agents[self.y][self.x] = 1
 
     # Individual per our research question
