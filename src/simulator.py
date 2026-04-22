@@ -94,18 +94,18 @@ class Simulator:
             config = MapConfig()
         
         # generates and sets the 2D grid with agent and victims, currently with preset values.
-        self.ground_truth.traversability.matrix, rooms = generate_traversability_matrix(self.width, self.height, 
+        self.ground_truth.traversability.matrix, rooms = _generate_traversability_matrix(self.width, self.height, 
                                                                                         config.num_rooms, config.unconnected_probability, 
                                                                                         config.min_room_width, config.max_room_width, 
                                                                                         config.min_room_length, config.max_room_length, 
                                                                                         config.min_tunnel_thickness, config.max_tunnel_thickness)
         
-        self.ground_truth.agents = place_agents(self.width, self.height, config.num_agents, rooms, self.ground_truth.victims)
-        self.ground_truth.victims = place_victims(self.width, self.height, config.num_victims, rooms, self.ground_truth.agents)
+        self.ground_truth.agents = _place_agents(self.width, self.height, config.num_agents, rooms, self.ground_truth.victims)
+        self.ground_truth.victims = _place_victims(self.width, self.height, config.num_victims, rooms, self.ground_truth.agents)
         self.ground_truth.confidence.matrix = np.ones((self.height, self.width))
         return
 
-def generate_traversability_matrix(x, y, n, u_p, w_min, w_max, l_min, l_max, t_min, t_max) -> tuple[np.ndarray, list[dict]]:
+def _generate_traversability_matrix(x, y, n, u_p, w_min, w_max, l_min, l_max, t_min, t_max) -> tuple[np.ndarray, list[dict]]:
     """
     Generates 2D traversability matrix with rooms and connecting corridors, and returns the room bounds and the matrix.
     
@@ -189,7 +189,7 @@ def generate_traversability_matrix(x, y, n, u_p, w_min, w_max, l_min, l_max, t_m
     return matrix, rooms
 
 
-def place_agents(x, y, n, rooms, victims) -> np.ndarray:
+def _place_agents(x, y, n, rooms, victims) -> np.ndarray:
     """
     Places agents in rooms.
 
@@ -217,7 +217,7 @@ def place_agents(x, y, n, rooms, victims) -> np.ndarray:
     
     return agents
 
-def place_victims(x, y, k, rooms, agents) -> np.ndarray:
+def _place_victims(x, y, k, rooms, agents) -> np.ndarray:
     """
     Places victims in rooms.
 
