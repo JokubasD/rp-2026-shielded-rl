@@ -16,7 +16,7 @@ class Agent:
         self.perception = State(width, height)
         self.x = x
         self.y = y
-        self.perception.agents.matrix[y][x] = 1
+        self.perception.agents[y][x] = 1
         self.world_width = width
         self.world_height = height
 
@@ -43,7 +43,7 @@ class Agent:
         """
 
         target_x, target_y = self.x, self.y
-        
+
         match direction:
             case AgentAction.MOVE_UP:
                 target_y -= 1
@@ -55,15 +55,15 @@ class Agent:
                 target_x += 1
             case _:
                 return
-        
+
         if not (0 <= target_x < self.world_width and 0 <= target_y < self.world_height):
             self.illegal_moves += 1
             return
-        
-        self.perception.agents.matrix[self.y][self.x] = 0
+
+        self.perception.agents[self.y][self.x] = 0
         self.x, self.y = target_x, target_y
         self.trajectory.append((self.x, self.y))
-        self.perception.agents.matrix[self.y][self.x] = 1
+        self.perception.agents[self.y][self.x] = 1
 
     # Individual per our research question
     # Can be overwritten in a subclass by just redefining the function

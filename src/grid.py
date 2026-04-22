@@ -5,3 +5,12 @@ class Grid:
         self.width = width
         self.height = height
         self.matrix = np.zeros((height, width))
+
+    def __getitem__(self, key):
+        return self.matrix[key]
+    
+    def __setitem__(self, key, value):
+        self.matrix[key] = value
+
+    def __delitem__(self, key):
+        self.matrix[key] = 0
