@@ -20,6 +20,8 @@ VICTIM_PRESENT = 1
 class MapConfig:
     num_rooms: int = 4
     unconnected_probability: float = 0.0
+    start_room_width: int = 3
+    start_room_length: int = 3
     min_room_width: int = 6
     max_room_width: int = 12
     min_room_length: int = 6
@@ -96,6 +98,7 @@ class Simulator:
         # generates and sets the 2D grid with agent and victims, currently with preset values.
         self.ground_truth.traversability.matrix, rooms = _generate_traversability_matrix(self.width, self.height, 
                                                                                         config.num_rooms, config.unconnected_probability, 
+                                                                                        config.start_room_width, config.start_room_length,
                                                                                         config.min_room_width, config.max_room_width, 
                                                                                         config.min_room_length, config.max_room_length, 
                                                                                         config.min_tunnel_thickness, config.max_tunnel_thickness)
@@ -108,6 +111,7 @@ class Simulator:
 def _generate_traversability_matrix(
         x: int, y: int,
         n: int, u_p: float,
+        s_width: int, s_length: int,
         w_min: int, w_max: int,
         l_min: int, l_max: int,
         t_min: int, t_max: int
@@ -117,7 +121,8 @@ def _generate_traversability_matrix(
     
     Parameters:
     x, y: Dimensions of the grid
-    n: Number of rooms
+    n: Number of rooms (outside of first room in top left)
+    s_width, s_length: Dimensions of the first room in the top left
     u_p: (unconnected_probability) The probability a room is unconnected
     w_min, w_max: Min/Max width of the rooms
     l_min, l_max: Min/Max length of the rooms
@@ -128,13 +133,25 @@ def _generate_traversability_matrix(
         raise ValueError(f"probability of unconnected rooms should be between 0 and 1 but was: {u_p}")
     
     matrix = np.full((y, x), UNTRAVERSIBLE)
-    room_seeds = np.zeros((2, n), dtype=int)
+    room_seeds = np.zeros((2, n + 1), dtype=int)
     rooms = []
 
     tunnel_width = random.randint(t_min, t_max)
     half_tunnel_width = tunnel_width // 2
 
-    for p in range(n):
+    # TODO create first room before for loop in top left, then go from 1 to n + 1 for other rooms
+    c = s_width // 2
+    f = s_length // 2
+    room_seeds[0][0] = c
+    room_seeds[1][0] = f
+    x_start = 0
+    x_end = s_width
+    y_start = 0
+    y_end = s_length
+    matrix[y_start:y_end, x_start:x_end] = TRAVERSIBLE
+    #? Should we store the first room in the rooms list?
+
+    for p in range(1, n + 1):
         c = random.randint(0,x - 1)
         f = random.randint(0,y - 1)
 
@@ -159,7 +176,7 @@ def _generate_traversability_matrix(
             'center': (c, f)
         })
     
-    for q in range(n - 1):
+    for q in range(n):
         connect = random.random() >= u_p
 
         if (connect):
@@ -274,6 +291,11 @@ def visualize_grid_gen(traversability: Grid, agents: Grid, victims: Grid) -> Non
     agent_mask = np.where(agents.matrix == AGENT_PRESENT, 1, np.nan)
     plt.imshow(agent_mask, cmap='winter', interpolation='nearest', alpha=1.0)
 
+    rows, cols = traversability.matrix.shape
+    plt.xticks(np.arange(-0.5, cols, 1), [])
+    plt.yticks(np.arange(-0.5, rows, 1), [])
+    plt.grid(color='gray', linewidth=0.1)   
+    plt.tick_params(bottom=False, left=False)
+
     plt.title("Search & Rescue: Map, Agents (Blue), and Victims (Red)")
-    plt.axis('off')
     plt.show()
