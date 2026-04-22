@@ -89,10 +89,7 @@ class Simulator:
             record.append(self.step())
         return record
     
-    def generate_ground_truth(self, config: MapConfig = None) -> None:
-        if config is None:
-            config = MapConfig()
-        
+    def generate_ground_truth(self, config: MapConfig = MapConfig()) -> None:
         # generates and sets the 2D grid with agent and victims, currently with preset values.
         self.ground_truth.traversability.matrix, rooms = _generate_traversability_matrix(self.width, self.height, 
                                                                                         config.num_rooms, config.unconnected_probability, 
@@ -100,8 +97,8 @@ class Simulator:
                                                                                         config.min_room_length, config.max_room_length, 
                                                                                         config.min_tunnel_thickness, config.max_tunnel_thickness)
         
-        self.ground_truth.agents = _place_agents(self.width, self.height, config.num_agents, rooms, self.ground_truth.victims)
-        self.ground_truth.victims = _place_victims(self.width, self.height, config.num_victims, rooms, self.ground_truth.agents)
+        self.ground_truth.agents.matrix = _place_agents(self.width, self.height, config.num_agents, rooms, self.ground_truth.victims)
+        self.ground_truth.victims.matrix = _place_victims(self.width, self.height, config.num_victims, rooms, self.ground_truth.agents)
         self.ground_truth.confidence.matrix = np.ones((self.height, self.width))
         return
 
