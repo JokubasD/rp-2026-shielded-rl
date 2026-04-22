@@ -10,8 +10,8 @@ class AgentAction(IntEnum):
     WAIT = 5
 
 class Agent:
-    def __init__(self, name: str, x: int, y: int, width: int, height: int, sigma: 
-                 float, scan_accuracy: float, scan_radius: int):
+    def __init__(self, name: str, x: int, y: int, width: int, height: int, 
+                 sigma: float, scan_accuracy: float, scan_radius: int):
         self.name = name
         self.perception = State(width, height)
         self.x = x
