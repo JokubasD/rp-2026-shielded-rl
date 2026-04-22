@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+from .grid import Grid
 from .state import State
 from .agent import *
 
@@ -89,7 +90,9 @@ class Simulator:
             record.append(self.step())
         return record
     
-    def generate_ground_truth(self, config: MapConfig = MapConfig()) -> None:
+    def generate_ground_truth(self, config: MapConfig = None) -> None:
+        if config is None:
+            config = MapConfig()
         # generates and sets the 2D grid with agent and victims, currently with preset values.
         self.ground_truth.traversability.matrix, rooms = _generate_traversability_matrix(self.width, self.height, 
                                                                                         config.num_rooms, config.unconnected_probability, 
@@ -102,7 +105,13 @@ class Simulator:
         self.ground_truth.confidence.matrix = np.ones((self.height, self.width))
         return
 
-def _generate_traversability_matrix(x, y, n, u_p, w_min, w_max, l_min, l_max, t_min, t_max) -> tuple[np.ndarray, list[dict]]:
+def _generate_traversability_matrix(
+        x: int, y: int,
+        n: int, u_p: float,
+        w_min: int, w_max: int,
+        l_min: int, l_max: int,
+        t_min: int, t_max: int
+        ) -> tuple[np.ndarray, list[dict]]:
     """
     Generates 2D traversability matrix with rooms and connecting corridors, and returns the room bounds and the matrix.
     
@@ -186,7 +195,12 @@ def _generate_traversability_matrix(x, y, n, u_p, w_min, w_max, l_min, l_max, t_
     return matrix, rooms
 
 
-def _place_agents(x, y, n, rooms, victims) -> np.ndarray:
+def _place_agents(
+        x: int, y: int, 
+        n: int, 
+        rooms: list[dict], 
+        victims: Grid
+        ) -> np.ndarray:
     """
     Places agents in rooms.
 
@@ -214,7 +228,11 @@ def _place_agents(x, y, n, rooms, victims) -> np.ndarray:
     
     return agents
 
-def _place_victims(x, y, k, rooms, agents) -> np.ndarray:
+def _place_victims(
+        x: int, y: int,
+        k: int, 
+        rooms: list[dict], 
+        agents: Grid) -> np.ndarray:
     """
     Places victims in rooms.
 
@@ -242,13 +260,13 @@ def _place_victims(x, y, k, rooms, agents) -> np.ndarray:
     return victims
 
 
-def visualize_grid_gen(matrix, agents, victims) -> None:
+def visualize_grid_gen(traversability: Grid, agents: Grid, victims: Grid) -> None:
     """
     Visualizes the map, agents, and victims in a single plot.
     """
     plt.figure(figsize=(10, 10))
     
-    plt.imshow(matrix, cmap='binary', interpolation='nearest')
+    plt.imshow(traversability.matrix, cmap='binary', interpolation='nearest')
 
     victim_mask = np.where(victims.matrix == VICTIM_PRESENT, 1, np.nan)
     plt.imshow(victim_mask, cmap='autumn', interpolation='nearest', alpha=1.0)
