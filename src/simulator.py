@@ -250,10 +250,10 @@ def visualize_grid_gen(matrix, agents, victims) -> None:
     
     plt.imshow(matrix, cmap='binary', interpolation='nearest')
 
-    victim_mask = np.where(victims == VICTIM_PRESENT, 1, np.nan)
+    victim_mask = np.where(victims.matrix == VICTIM_PRESENT, 1, np.nan)
     plt.imshow(victim_mask, cmap='autumn', interpolation='nearest', alpha=1.0)
     
-    agent_mask = np.where(agents == AGENT_PRESENT, 1, np.nan)
+    agent_mask = np.where(agents.matrix == AGENT_PRESENT, 1, np.nan)
     plt.imshow(agent_mask, cmap='winter', interpolation='nearest', alpha=1.0)
 
     plt.title("Search & Rescue: Map, Agents (Blue), and Victims (Red)")
