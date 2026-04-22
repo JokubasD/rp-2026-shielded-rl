@@ -15,7 +15,7 @@ class SimulatorTest(unittest.TestCase):
 
         self.assertEqual(len(sim.agents), 1)
         self.assertEqual(sim.agents[0], bob)
-        self.assertEqual(sim.ground_truth.agents.matrix[0][0], 1)
+        self.assertEqual(sim.ground_truth.agents[0][0], 1)
 
     def test_step(self):
         sim = Simulator(4, 3)
@@ -24,8 +24,8 @@ class SimulatorTest(unittest.TestCase):
 
         new_state = sim.step()
         # Assumes get_action returns MOVE_RIGHT
-        self.assertEqual(new_state.agents.matrix[0][0], 0)
-        self.assertEqual(new_state.agents.matrix[0][1], 1)
+        self.assertEqual(new_state.agents[0][0], 0)
+        self.assertEqual(new_state.agents[0][1], 1)
 
     def test_run(self):
         sim = Simulator(4, 3)
@@ -34,10 +34,10 @@ class SimulatorTest(unittest.TestCase):
 
         steps = sim.run(3)
         self.assertEqual(len(steps), 4)
-        self.assertEqual(steps[0].agents.matrix[0][0], 1)
-        self.assertEqual(steps[1].agents.matrix[0][0], 0)
-        self.assertEqual(steps[1].agents.matrix[0][1], 1)
-        self.assertEqual(steps[2].agents.matrix[0][1], 0)
-        self.assertEqual(steps[2].agents.matrix[0][2], 1)
-        self.assertEqual(steps[3].agents.matrix[0][2], 0)
-        self.assertEqual(steps[3].agents.matrix[0][3], 1)
+        self.assertEqual(steps[0].agents[0][0], 1)
+        self.assertEqual(steps[1].agents[0][0], 0)
+        self.assertEqual(steps[1].agents[0][1], 1)
+        self.assertEqual(steps[2].agents[0][1], 0)
+        self.assertEqual(steps[2].agents[0][2], 1)
+        self.assertEqual(steps[3].agents[0][2], 0)
+        self.assertEqual(steps[3].agents[0][3], 1)

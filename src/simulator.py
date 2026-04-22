@@ -43,7 +43,7 @@ class Simulator:
         agent: The agent to add
         """
         self.agents.append(agent)
-        self.ground_truth.agents.matrix[agent.y][agent.x] = 1
+        self.ground_truth.agents[agent.y][agent.x] = 1
 
     def step(self) -> State:
         """
@@ -59,9 +59,9 @@ class Simulator:
             is_move = action < 4
             
             if is_move:
-                self.ground_truth.agents.matrix[agent.y][agent.x] = 0
+                self.ground_truth.agents[agent.y][agent.x] = 0
                 agent.move(action)
-                self.ground_truth.agents.matrix[agent.y][agent.x] = 1
+                self.ground_truth.agents[agent.y][agent.x] = 1
             
             elif action == AgentAction.SCAN:
                 agent.scan(self.ground_truth)
