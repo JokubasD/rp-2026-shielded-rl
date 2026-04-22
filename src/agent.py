@@ -10,7 +10,8 @@ class AgentAction(IntEnum):
     WAIT = 5
 
 class Agent:
-    def __init__(self, name: str, x: int, y: int, width: int, height: int):
+    def __init__(self, name: str, x: int, y: int, width: int, height: int, 
+                 sigma: float, scan_accuracy: float, scan_radius: int):
         self.name = name
         self.perception = State(width, height)
         self.x = x
@@ -18,6 +19,14 @@ class Agent:
         self.perception.agents[y][x] = 1
         self.world_width = width
         self.world_height = height
+
+        self.sigma = sigma # Certainty decay per time step [0,1]
+        self.scan_accuracy = scan_accuracy # Scan accuracy [0,1]
+        self.scan_radius = scan_radius # How far the agent can see when it scans
+
+        self.move_history: list[tuple[int, int]] = [(x, y)] # Maintain a log of what positions the agent has been in for stats
+
+        self.illegal_moves = 0
 
     # Perform a scan to gather information.
     # Should update perceived state matrices.
@@ -33,19 +42,27 @@ class Agent:
         direction: The action to perform
         """
 
-
-        self.perception.agents[self.y][self.x] = 0
+        target_x, target_y = self.x, self.y
 
         match direction:
             case AgentAction.MOVE_UP:
-                self.y -= 1
+                target_y -= 1
             case AgentAction.MOVE_DOWN:
-                self.y += 1
+                target_y += 1
             case AgentAction.MOVE_LEFT:
-                self.x -= 1
+                target_x -= 1
             case AgentAction.MOVE_RIGHT:
-                self.x += 1
-        
+                target_x += 1
+            case _:
+                return
+
+        if not (0 <= target_x < self.world_width and 0 <= target_y < self.world_height):
+            self.illegal_moves += 1
+            return
+
+        self.perception.agents[self.y][self.x] = 0
+        self.x, self.y = target_x, target_y
+        self.move_history.append((self.x, self.y))
         self.perception.agents[self.y][self.x] = 1
 
     # Individual per our research question
