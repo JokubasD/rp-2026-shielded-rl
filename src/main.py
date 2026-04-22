@@ -6,7 +6,7 @@ HEIGHT = 3
 
 def main():
     sim = Simulator(WIDTH, HEIGHT)
-    bob = Agent("Bob", 0, 0, WIDTH, HEIGHT)
+    bob = Agent("Bob", 0, 0, WIDTH, HEIGHT, 0.05, 0.9, 0)
     sim.add_agent(bob)
 
     print("NEW RUN =====================")
