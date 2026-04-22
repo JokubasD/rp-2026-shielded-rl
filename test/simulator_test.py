@@ -6,7 +6,7 @@ class SimulatorTest(unittest.TestCase):
     def test_visualize_grid_gen(self):
         simulator = Simulator(50, 50)
         simulator.generate_ground_truth()
-        visualize_grid_gen(simulator.ground_truth.traversability.matrix, simulator.ground_truth.agents, simulator.ground_truth.victims)
+        visualize_grid_gen(simulator.ground_truth.traversability, simulator.ground_truth.agents, simulator.ground_truth.victims)
     
     def test_add_agent(self):
         sim = Simulator(5, 5)
