@@ -90,7 +90,7 @@ class Simulator:
             record.append(self.step())
         return record
     
-    def generate_ground_truth(self, config: MapConfig = None) -> None:
+    def generate_ground_truth(self, config: MapConfig | None = None) -> None:
         if config is None:
             config = MapConfig()
         # generates and sets the 2D grid with agent and victims, currently with preset values.
