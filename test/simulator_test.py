@@ -3,6 +3,11 @@ import unittest
 from src.simulator import *
 
 class SimulatorTest(unittest.TestCase):
+    def test_visualize_grid_gen(self):
+        simulator = Simulator(50, 50)
+        simulator.generate_ground_truth()
+        visualize_grid_gen(simulator.ground_truth.traversability.matrix, simulator.ground_truth.agents, simulator.ground_truth.victims)
+    
     def test_add_agent(self):
         sim = Simulator(5, 5)
         bob = Agent("Bob", 0, 0, 5, 5)
