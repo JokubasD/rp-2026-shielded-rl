@@ -35,18 +35,8 @@ class Agent:
         Parameters:
         state: The true world to scan from
         """
-        # Scan all indices where manhattan distance to agent <= scan_radius
-        scanned_indices = []
-        top_scan_limit = max(0, self.y - self.scan_radius)
-        bottom_scan_limit = min(self.world_height, self.y + self.scan_radius + 1)
-        left_scan_limit = max(0, self.x - self.scan_radius)
-        right_scan_limit = min(self.world_width, self.x + self.scan_radius + 1)
-        for i in range(top_scan_limit, bottom_scan_limit):
-            for j in range(left_scan_limit, right_scan_limit):
-                if abs(i - self.y) + abs(j - self.x) <= self.scan_radius:
-                    scanned_indices.append((i, j))
-
-        # for i, j in scanned_indices: do stuff
+        for i, j in self._get_scan_indices():
+            pass
 
     def move(self, direction: AgentAction) -> None:
         """
@@ -89,3 +79,15 @@ class Agent:
         The action the agent wants to perform given its internal perception matrix
         """
         return AgentAction.MOVE_RIGHT
+
+    def _get_scan_indices(self):
+        scanned_indices = []
+        top_scan_limit = max(0, self.y - self.scan_radius)
+        bottom_scan_limit = min(self.world_height, self.y + self.scan_radius + 1)
+        left_scan_limit = max(0, self.x - self.scan_radius)
+        right_scan_limit = min(self.world_width, self.x + self.scan_radius + 1)
+        for i in range(top_scan_limit, bottom_scan_limit):
+            for j in range(left_scan_limit, right_scan_limit):
+                if abs(i - self.y) + abs(j - self.x) <= self.scan_radius:
+                    scanned_indices.append((i, j))
+        return scanned_indices
