@@ -64,8 +64,7 @@ class Simulator:
                 agent.move(action)
                 self.ground_truth.agents[agent.y][agent.x] = 1
             
-            elif action == AgentAction.SCAN:
-                agent.scan(self.ground_truth)
+            agent.scan(self.ground_truth)
 
         # Perform environment actions (firespread, etc.)
 

@@ -6,8 +6,7 @@ class AgentAction(IntEnum):
     MOVE_DOWN = 1
     MOVE_LEFT = 2
     MOVE_RIGHT = 3
-    SCAN = 4
-    WAIT = 5
+    WAIT = 4
 
 class Agent:
     def __init__(self, name: str, x: int, y: int, width: int, height: int, 
@@ -28,11 +27,23 @@ class Agent:
 
         self.illegal_moves = 0
 
-    # Perform a scan to gather information.
-    # Should update perceived state matrices.
-    # Input: State should always be ground truth
-    def scan(self, state: State):
-        pass
+    def scan(self, state: State) -> None:
+        """
+        Retrieves information from the state passed in (with some noise/uncertainties?)
+
+        Parameters:
+        state: The true world to scan from
+        """
+        for i in range(self.world_height):
+            for j in range(self.world_width):
+                if self._tile_scanned(i, j):
+                    self.perception.confidence[i][j] = max(self.perception.confidence[i][j] - self.sigma, self.scan_accuracy)
+                    self.perception.traversability[i][j] = state.traversability[i][j]
+                    self.perception.victims[i][j] = state.victims[i][j]
+                    self.perception.agents[i][j] = state.agents[i][j]
+                else:
+                    self.perception.confidence[i][j] = max(self.perception.confidence[i][j] - self.sigma, 0)
+                    
 
     def move(self, direction: AgentAction) -> None:
         """
@@ -65,8 +76,6 @@ class Agent:
         self.move_history.append((self.x, self.y))
         self.perception.agents[self.y][self.x] = 1
 
-    # Individual per our research question
-    # Can be overwritten in a subclass by just redefining the function
     def get_action(self) -> AgentAction:
         """
         To be overwritten for each research question.
@@ -75,3 +84,10 @@ class Agent:
         The action the agent wants to perform given its internal perception matrix
         """
         return AgentAction.MOVE_RIGHT
+
+    def _tile_scanned(self, row: int, col: int) -> bool:
+        """
+        Checks if a tile is within the scan radius of the agent
+        """
+        # return abs(row - self.y) + abs(col - self.x) <= self.scan_radius # manhattan distance
+        return abs(row - self.y) ** 2 + abs(col - self.x) ** 2 <= self.scan_radius ** 2 # euclidean distance
