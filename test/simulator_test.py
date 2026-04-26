@@ -4,9 +4,22 @@ from src.simulator import *
 
 class SimulatorTest(unittest.TestCase):
     def test_visualize_grid_gen(self):
-        simulator = Simulator(50, 50)
-        simulator.generate_ground_truth()
-        visualize_grid_gen(simulator.ground_truth.traversability, simulator.ground_truth.agents, simulator.ground_truth.victims)
+        simulator = Simulator(100, 100)
+        config = MapConfig(num_rooms=7,
+                           unconnected_probability=0.0,
+                           room_vulnerability_probability=0.5,
+                           start_room_width=5,
+                           start_room_length=5,
+                           min_room_width=10,
+                           max_room_width=20,
+                           min_room_length=10,
+                           max_room_length=20,
+                           min_tunnel_thickness=4,
+                           max_tunnel_thickness=6,
+                           num_victims=5)
+        simulator.generate_ground_truth(config)
+        visualize_grid_gen(simulator.ground_truth.traversability, simulator.ground_truth.agents, 
+                           simulator.ground_truth.victims, simulator.ground_truth.vulnerability)
     
     def test_add_agent(self):
         sim = Simulator(5, 5)
