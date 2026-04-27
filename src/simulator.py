@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from .grid import Grid
 from .state import State
 from .agent import *
+from .metric import Metric, RunOutcome
 
 TRAVERSIBLE = 0
 UNTRAVERSIBLE = 1
@@ -35,6 +36,7 @@ class Simulator:
         self.height = height
         self.agents: list[Agent] = []
         self.ground_truth = State(width, height)
+        self.metrics = Metric()
 
     def add_agent(self, agent: Agent) -> None:
         """
@@ -45,6 +47,7 @@ class Simulator:
         """
         self.agents.append(agent)
         self.ground_truth.agents[agent.y][agent.x] = 1
+        self.metrics.register_agent(agent)
 
     def step(self) -> State:
         """
@@ -54,23 +57,18 @@ class Simulator:
         Returns:
         The ground truth state after the step.
         """
-        # Perform agent actions
+        intents = self._collect_intents()
+        self._resolve_agent_conflicts(intents)
+        self._commit_moves(intents)
+
         for agent in self.agents:
-            action = agent.get_action()
-            is_move = action < 4
-            
-            if is_move:
-                self.ground_truth.agents[agent.y][agent.x] = 0
-                agent.move(action)
-                self.ground_truth.agents[agent.y][agent.x] = 1
-            
             agent.scan(self.ground_truth)
 
         # Perform environment actions (firespread, etc.)
+        self.metrics.steps_taken += 1
+        self._update_found_metrics()
 
-        # Don't let the returned state modify current state
-        result = deepcopy(self.ground_truth)
-        return result 
+        return deepcopy(self.ground_truth)
 
     def run(self, steps: int) -> list[State]:
         """
