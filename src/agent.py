@@ -40,15 +40,7 @@ class Agent:
         for i in range(self.world_height):
             for j in range(self.world_width):
                 if self._tile_scanned(i, j):
-                    accuracy = self.scan_accuracy
-                    if (self.scan_falloff):
-                        delta_x = j - self.x
-                        delta_y = i - self.y
-                        variance = (self.scan_radius / 3) ** 2
-                        accuracy *= np.exp(-0.5 * (delta_x + delta_y) / variance)
-                    
-                    self.perception.confidence[i][j] = max(self.perception.confidence[i][j] - self.sigma, accuracy)
-                        
+                    self.perception.confidence[i][j] = max(self.perception.confidence[i][j] - self.sigma, self._tile_accuracy(i, j))
                     self.perception.traversability[i][j] = state.traversability[i][j]
                     self.perception.victims[i][j] = state.victims[i][j]
                     self.perception.agents[i][j] = state.agents[i][j]
@@ -114,3 +106,13 @@ class Agent:
         Uses modified bresenham's line algorithm
         """
         return True
+    
+    def _tile_accuracy(self, row: int, col: int) -> float:
+        accuracy = self.scan_accuracy
+        if (self.scan_falloff):
+            variance = (self.scan_radius / 3) ** 2
+            delta_x = col - self.x
+            delta_y = row - self.y
+            accuracy *= np.exp(-0.5 * (delta_x**2 + delta_y**2) / variance)
+        
+        return accuracy
