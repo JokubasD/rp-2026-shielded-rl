@@ -10,7 +10,7 @@ class SimulatorTest(unittest.TestCase):
     
     def test_add_agent(self):
         sim = Simulator(5, 5)
-        bob = Agent("Bob", 0, 0, 5, 5, sigma=0.05, scan_accuracy=0.9, scan_radius=0)
+        bob = Agent("Bob", 0, 0, 5, 5, sigma=0.05, scan_accuracy=0.9, scan_radius=0, scan_falloff=False)
         sim.add_agent(bob)
 
         self.assertEqual(len(sim.agents), 1)
@@ -19,7 +19,7 @@ class SimulatorTest(unittest.TestCase):
 
     def test_step(self):
         sim = Simulator(4, 3)
-        bob = Agent("Bob", 0, 0, 4, 3, sigma=0.05, scan_accuracy=0.9, scan_radius=0)
+        bob = Agent("Bob", 0, 0, 4, 3, sigma=0.05, scan_accuracy=0.9, scan_radius=0, scan_falloff=False)
         sim.add_agent(bob)
 
         new_state = sim.step()
@@ -29,7 +29,7 @@ class SimulatorTest(unittest.TestCase):
 
     def test_run(self):
         sim = Simulator(4, 3)
-        bob = Agent("Bob", 0, 0, 4, 3, sigma=0.05, scan_accuracy=0.9, scan_radius=0)
+        bob = Agent("Bob", 0, 0, 4, 3, sigma=0.05, scan_accuracy=0.9, scan_radius=0, scan_falloff=False)
         sim.add_agent(bob)
 
         steps = sim.run(3)
