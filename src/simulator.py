@@ -186,6 +186,32 @@ class Simulator:
             if not changed:
                 break
 
+    def _commit_moves(self, intents: dict[Agent, tuple[int, int]]) -> None:
+        for agent, (tx, ty) in intents.items():
+            if (tx, ty) == (agent.x, agent.y):
+                continue
+            self.ground_truth.agents[agent.y][agent.x] = 0
+            self.ground_truth.agents[ty][tx] = 1
+            agent.move_to(tx, ty)
+
+    def _update_found_metrics(self) -> None:
+        truth = (self.ground_truth.victims.matrix == VICTIM_PRESENT)
+        total = int(truth.sum())
+        self.metrics.total_victims = total
+        if total == 0:
+            return
+
+        union = np.zeros_like(truth, dtype=bool)
+        for agent in self.agents:
+            union |= (agent.perception.victims.matrix == VICTIM_PRESENT)
+        found = int((truth & union).sum())
+        self.metrics.victims_found = found
+
+        if found > 0 and self.metrics.time_to_first_found is None:
+            self.metrics.time_to_first_found = self.metrics.steps_taken
+        if found == total and self.metrics.time_to_all_found is None:
+            self.metrics.time_to_all_found = self.metrics.steps_taken
+            self.metrics.outcome = RunOutcome.SUCCESS
     
     def generate_ground_truth(self, config: MapConfig | None = None) -> None:
         if config is None:
