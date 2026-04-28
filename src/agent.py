@@ -102,6 +102,7 @@ class Agent:
 
     def _tile_in_line_of_sight(self, row: int, col: int) -> bool:
         """
-        Checks if a tile is within line-of-site of the agent
+        Checks if a tile is within line-of-site of the agent.
+        Uses modified bresenham's line algorithm
         """
         return
