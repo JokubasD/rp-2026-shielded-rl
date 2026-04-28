@@ -132,7 +132,60 @@ class Simulator:
                 tx += 1
         return tx, ty
 
-    
+    def _resolve_agent_conflicts(self, intents: dict[Agent, tuple[int, int]]) -> None:
+        """
+        Iteratively force conflicted movers to stay until no conflicts remain.
+        Three conflict types: same-target (multiple movers want one cell),
+        mover-into-stayer (a mover targets a cell whose occupant is staying),
+        and swap pairs.
+        """
+        while True:
+            changed = False
+
+            # all agents contesting one cell collide, non get to move.
+            target_groups: dict[tuple[int, int], list[Agent]] = {}
+            for agent in self.agents:
+                if intents[agent] == (agent.x, agent.y):
+                    continue
+                target_groups.setdefault(intents[agent], []).append(agent)
+            for movers in target_groups.values():
+                if len(movers) > 1:
+                    for a in movers:
+                        self.metrics.record_inter_agent_collision(a)
+                        intents[a] = (a.x, a.y)
+                    changed = True
+            if changed:
+                continue
+
+            # target cell is occupied by an agent that isn't moving away. Both agents collide.
+            stayers: dict[tuple[int, int], Agent] = {
+                (a.x, a.y): a for a in self.agents
+                if intents[a] == (a.x, a.y)
+            }
+            for mover in [a for a in self.agents if intents[a] != (a.x, a.y)]:
+                if intents[mover] in stayers:
+                    stayer = stayers[intents[mover]]
+                    self.metrics.record_inter_agent_collision(mover)
+                    self.metrics.record_inter_agent_collision(stayer)
+                    intents[mover] = (mover.x, mover.y)
+                    changed = True
+            if changed:
+                continue
+
+            # Two movers want each other's current cells.
+            movers = [a for a in self.agents if intents[a] != (a.x, a.y)]
+            for i, a in enumerate(movers):
+                for b in movers[i+1:]:
+                    if intents[a] == (b.x, b.y) and intents[b] == (a.x, a.y):
+                        self.metrics.record_inter_agent_collision(a)
+                        self.metrics.record_inter_agent_collision(b)
+                        intents[a] = (a.x, a.y)
+                        intents[b] = (b.x, b.y)
+                        changed = True
+
+            if not changed:
+                break
+
     
     def generate_ground_truth(self, config: MapConfig | None = None) -> None:
         if config is None:
