@@ -87,7 +87,21 @@ class Agent:
 
     def _tile_scanned(self, row: int, col: int) -> bool:
         """
+        Checks if a tile is within the scan radius and within line-of-sight of the agent
+        """
+        if not self._tile_in_range(row, col):
+            return False
+        return self._tile_in_line_of_sight(row, col)
+
+    def _tile_in_range(self, row: int, col: int) -> bool:
+        """
         Checks if a tile is within the scan radius of the agent
         """
         # return abs(row - self.y) + abs(col - self.x) <= self.scan_radius # manhattan distance
         return abs(row - self.y) ** 2 + abs(col - self.x) ** 2 <= self.scan_radius ** 2 # euclidean distance
+
+    def _tile_in_line_of_sight(self, row: int, col: int) -> bool:
+        """
+        Checks if a tile is within line-of-site of the agent
+        """
+        return
