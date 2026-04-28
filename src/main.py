@@ -36,19 +36,16 @@ if __name__ == "__main__":
 # from agent import *
 # from visualization import Visualizer
 
-# WIDTH = 4
-# HEIGHT = 3
+# WIDTH = 9
+# HEIGHT = 9
 
 # def main():
-#     sim = Simulator(WIDTH, HEIGHT)
-#     bob = Agent("Bob", 0, 0, WIDTH, HEIGHT)
-#     sim.add_agent(bob)
+#     bob = Agent("Bob", 4, 4, WIDTH, HEIGHT, 0.05, 0.9, 2)
+#     bob.scan(State(WIDTH, HEIGHT))
 
 #     print("NEW RUN =====================")
-#     print(sim.ground_truth.agents.matrix, "\n")
-#     steps = sim.run(3)
-#     for step in steps:
-#         print(step.agents.matrix, "\n")
+#     print(bob.perception.agents.matrix, "\n")
+#     print(bob.perception.traversability.matrix, "\n")
 
 # if __name__ == "__main__":
 #     main()
