@@ -1,18 +1,19 @@
 import pygame
 import sys
-from simulator import Simulator, MapConfig
-from agent import AgentAction
 
 # --- STYLING ---
 COLORS = {
-    "wall": (40, 44, 52),
-    "floor": (200, 200, 200),
-    "agent": (0, 120, 255, 200),   # RGBA
-    "victim": (255, 50, 50, 255),
-    "confidence": (255, 255, 0, 100), # Yellow tint for high confidence
-    "ui_bg": (30, 30, 35),
-    "text": (255, 255, 255),
-    "accent": (0, 200, 100)
+    "wall_base": (45, 55, 65), 
+    "wall_highlight": (70, 85, 95), 
+    "wall_shadow": (20, 25, 30), 
+    "floor": (211, 223, 223),
+    "floor_grid_lines": (180, 200, 200),
+    "ui_bg": (20, 24, 30),       
+    "panel_bg": (35, 40, 50),     
+    "panel_border": (60, 70, 85),
+    "text": (210, 220, 230),      
+    "accent": (40, 150, 255),     
+    "danger": (255, 80, 80),   
 }
 
 class Checkbox:
@@ -42,86 +43,165 @@ class Visualizer:
         self.history = history
         self.cell_size = cell_size
         self.current_step = 0
-        
-        self.rows = history[0].height
-        self.cols = history[0].width
-        
-        # Layout Layout
-        self.grid_w = self.cols * cell_size
-        self.grid_h = self.rows * cell_size
-        self.sidebar_w = 200
-        self.bottom_h = 80
+
+        # Fonts and dimensions
+        self.font = pygame.font.SysFont("Arial", 20)
+        self.small_font = pygame.font.SysFont("Arial", 14)
+        self.rows, self.cols = history[0].height, history[0].width
+        self.grid_w, self.grid_h = self.cols * cell_size, self.rows * cell_size
+        self.sidebar_w, self.bottom_h = 200, 80
         
         self.screen = pygame.display.set_mode((self.grid_w + self.sidebar_w, self.grid_h + self.bottom_h))
         
-        # Initialize UI Components
+        # Adaptive ui layout math
+        self.sidebar_x = self.grid_w + 10
+        padding, row_h, header_h = 15, 30, 45
+
+        # Initialize checkboxes
         self.checkboxes = [
             Checkbox(self.grid_w + 20, 50, "Traversability", True),
             Checkbox(self.grid_w + 20, 80, "Victims", True),
             Checkbox(self.grid_w + 20, 110, "Agents", True),
             Checkbox(self.grid_w + 20, 140, "Confidence Map", False),
         ]
-        
-        self.slider_rect = pygame.Rect(50, self.grid_h + 40, self.grid_w - 100, 10)
-        self.is_dragging_slider = False
 
-    def draw_grid_layer(self, surface, matrix, color_mapping_func):
-        """Generic layer drawer for performance"""
-        for y in range(self.rows):
-            for x in range(self.cols):
-                val = matrix[y][x]
-                color = color_mapping_func(val)
-                if color: # Only draw if there's a color (alpha support)
-                    rect = (x * self.cell_size, y * self.cell_size, self.cell_size, self.cell_size)
-                    if len(color) == 4: # Handle transparency
-                        s = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
-                        s.fill(color)
-                        surface.blit(s, rect)
-                    else:
-                        pygame.draw.rect(surface, color, rect)
+        # Position the checkboxes and calculate the Layers panel height
+        for i, cb in enumerate(self.checkboxes):
+            cb.rect.y = padding + header_h + (i * row_h)
+        
+        self.layers_panel_h = (len(self.checkboxes) * row_h) + header_h
+        self.stats_y = padding + self.layers_panel_h + 20
+        self.stats_panel_h = 150 # Fixed height for stats
+
+        # Interactive elements
+        self.play_button_rect = pygame.Rect(self.sidebar_x + 60, self.grid_h + 25, 70, 35)
+        self.slider_rect = pygame.Rect(50, self.grid_h + 45, self.grid_w - 100, 8)
+        self.is_dragging_slider = False
+        self.is_playing = False
+        self.play_speed = 100 
+        self.last_update_time = pygame.time.get_ticks()
+
+        # Assets and pre-rendering
+        self.load_assets()
+        self.generate_static_background()
+
+    def load_assets(self):
+        self.use_sprites = True
+        try:
+            self.agent_sprite = pygame.image.load("assets/robot.png").convert_alpha()
+            self.agent_sprite = pygame.transform.scale(self.agent_sprite, (self.cell_size, self.cell_size))
+            
+            self.victim_sprite = pygame.image.load("assets/victim_bloody.png").convert_alpha()
+            self.victim_sprite = pygame.transform.scale(self.victim_sprite, (self.cell_size, self.cell_size))
+        except:
+            print("Sprites not found in assets folder, falling back to shapes.")
+            self.use_sprites = False
+
+    def generate_static_background(self):
+        """ makes grid, sidebar, and footer into one static image"""
+        self.full_bg = pygame.Surface((self.grid_w + self.sidebar_w, self.grid_h + self.bottom_h))
+        
+        self.full_bg.fill(COLORS["floor"])
+        for x in range(0, self.grid_w + 1, self.cell_size):
+            pygame.draw.line(self.full_bg, COLORS["floor_grid_lines"], (x, 0), (x, self.grid_h))
+        for y in range(0, self.grid_h + 1, self.cell_size):
+            pygame.draw.line(self.full_bg, COLORS["floor_grid_lines"], (0, y), (self.grid_w, y))
+            
+        pygame.draw.rect(self.full_bg, COLORS["ui_bg"], (self.grid_w, 0, self.sidebar_w, self.grid_h))
+        pygame.draw.rect(self.full_bg, (15, 18, 22), (0, self.grid_h, self.grid_w + self.sidebar_w, self.bottom_h))
+        pygame.draw.line(self.full_bg, COLORS["panel_border"], (self.grid_w, 0), (self.grid_w, self.grid_h + self.bottom_h), 1)
+
+    def draw_panel_frame(self, x, y, w, h, title):
+        # Draw the main box
+        rect = pygame.Rect(x, y, w, h)
+        pygame.draw.rect(self.screen, COLORS["panel_bg"], rect, border_radius=8)
+        pygame.draw.rect(self.screen, COLORS["panel_border"], rect, 2, border_radius=8)
+      
+        header_surf = self.small_font.render(title.upper(), True, COLORS["accent"])
+        self.screen.blit(header_surf, (x + 10, y + 10))
+        pygame.draw.line(self.screen, COLORS["panel_border"], (x + 10, y + 28), (x + w - 10, y + 28))
+   
+    def draw_beveled_wall(self, x, y):
+        rect = pygame.Rect(x * self.cell_size, y * self.cell_size, self.cell_size, self.cell_size)
+        pygame.draw.rect(self.screen, COLORS["wall_base"], rect)
+        pygame.draw.line(self.screen, COLORS["wall_highlight"], rect.topleft, rect.topright, 2)
+        pygame.draw.line(self.screen, COLORS["wall_highlight"], rect.topleft, rect.bottomleft, 2)
+        pygame.draw.line(self.screen, COLORS["wall_shadow"], rect.bottomleft, rect.bottomright, 2)
+        pygame.draw.line(self.screen, COLORS["wall_shadow"], rect.topright, rect.bottomright, 2)
 
     def render(self):
-        self.screen.fill(COLORS["ui_bg"])
+        #1. base layers
+        self.screen.blit(self.full_bg, (0, 0))
         state = self.history[self.current_step]
-        
-        # 1. DRAW LAYERS
-        # Base Floor/Walls
+
+        # 2. simulation data
+        # traversability
         if self.checkboxes[0].active:
-            self.draw_grid_layer(self.screen, state.traversability.matrix, 
-                                 lambda v: COLORS["wall"] if v == 1 else COLORS["floor"])
-        
-        # Victims
+            for y in range(self.rows):
+                for x in range(self.cols):
+                    if state.traversability.matrix[y][x] == 1:
+                        self.draw_beveled_wall(x, y)
+
+        # victims
         if self.checkboxes[1].active:
-            self.draw_grid_layer(self.screen, state.victims.matrix, 
-                                 lambda v: COLORS["victim"] if v == 1 else None)
-        
-        # Agents
+            for y in range(self.rows):
+                for x in range(self.cols):
+                    if state.victims.matrix[y][x] == 1:
+                        if self.use_sprites:
+                            self.screen.blit(self.victim_sprite, (x * self.cell_size, y * self.cell_size))
+                        else:
+                            pygame.draw.circle(self.screen, COLORS["victim"], (x*self.cell_size+12, y*self.cell_size+12), 8)
+
+        # agents
         if self.checkboxes[2].active:
-            self.draw_grid_layer(self.screen, state.agents.matrix, 
-                                 lambda v: COLORS["agent"] if v == 1 else None)
+            for y in range(self.rows):
+                for x in range(self.cols):
+                    if state.agents.matrix[y][x] == 1:
+                        if self.use_sprites:
+                            self.screen.blit(self.agent_sprite, (x * self.cell_size, y * self.cell_size))
+                        else:
+                            pygame.draw.rect(self.screen, COLORS["agent"], (x*self.cell_size+4, y*self.cell_size+4, 17, 17))
 
-        # Confidence (Example of Heatmap/Alpha layer)
+        # confidence
         if self.checkboxes[3].active:
-            self.draw_grid_layer(self.screen, state.confidence.matrix, 
-                                 lambda v: (255, 255, 0, int(v * 100)) if v > 0 else None)
+            conf_tile = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
+            
+            for y in range(self.rows):
+                for x in range(self.cols):
+                    conf_val = state.confidence.matrix[y][x]
+                    if conf_val > 0:
+                        conf_tile.fill((0, 0, 0, 0))
+            
+                        alpha = int(conf_val * 150) 
+                        color = (255, 140, 0, alpha)
+                        
+                        pygame.draw.rect(conf_tile, color, conf_tile.get_rect())
+                        self.screen.blit(conf_tile, (x * self.cell_size, y * self.cell_size))
 
-        # 2. DRAW SIDEBAR
-        pygame.draw.rect(self.screen, (20, 20, 25), (self.grid_w, 0, self.sidebar_w, self.grid_h))
+        # 3. SIDEBAR PANELS
+        self.draw_panel_frame(self.sidebar_x, 15, self.sidebar_w - 20, self.layers_panel_h, "Layers")
+        self.draw_panel_frame(self.sidebar_x, self.stats_y, self.sidebar_w - 20, self.stats_panel_h, "Mission Stats")
+        
         for cb in self.checkboxes:
             cb.draw(self.screen)
+            
+        stat_txt = self.small_font.render(f"Step Count: {self.current_step}", True, COLORS["text"])
+        self.screen.blit(stat_txt, (self.sidebar_x + 15, self.stats_y + 45))
 
-        # 3. DRAW SLIDER
-        pygame.draw.rect(self.screen, (100, 100, 100), self.slider_rect) # Slider bar
-        # Slider handle position
-        progress = self.current_step / (len(self.history) - 1)
+        # 4. CONTROLS (Footer)
+        # Play Button
+        btn_color = COLORS["accent"] if not self.is_playing else (200, 50, 50)
+        pygame.draw.rect(self.screen, btn_color, self.play_button_rect, border_radius=6)
+        lbl = "STOP" if self.is_playing else "PLAY"
+        btn_text = self.font.render(lbl, True, COLORS["text"])
+        self.screen.blit(btn_text, (self.play_button_rect.centerx - btn_text.get_width()//2, self.play_button_rect.centery - btn_text.get_height()//2))
+
+        # Slider
+        pygame.draw.rect(self.screen, (60, 60, 70), self.slider_rect, border_radius=4)
+        progress = self.current_step / max(1, (len(self.history) - 1))
         handle_x = self.slider_rect.x + (progress * self.slider_rect.width)
         pygame.draw.circle(self.screen, COLORS["accent"], (int(handle_x), self.slider_rect.centery), 10)
         
-        # Label
-        font = pygame.font.SysFont("Arial", 14)
-        ts_text = font.render(f"Step: {self.current_step}", True, COLORS["text"])
-        self.screen.blit(ts_text, (self.slider_rect.x, self.slider_rect.y - 20))
-
     def run(self):
         clock = pygame.time.Clock()
         while True:
@@ -132,33 +212,39 @@ class Visualizer:
                 # Checkbox events
                 for cb in self.checkboxes:
                     cb.handle_event(event)
-                
-                # Slider events
+               
+                # Click events
                 if event.type == pygame.MOUSEBUTTONDOWN:
+                    if self.play_button_rect.collidepoint(event.pos):
+                       self.is_playing = not self.is_playing
+                    
                     if self.slider_rect.collidepoint(event.pos):
                         self.is_dragging_slider = True
+
+                # Unclick events
                 if event.type == pygame.MOUSEBUTTONUP:
                     self.is_dragging_slider = False
-                
+
+                # Slider events
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RIGHT:
+                          self.current_step = min(self.current_step + 1, len(self.history) - 1)
+                    elif event.key == pygame.K_LEFT:
+                          self.current_step = max(self.current_step - 1, 0)
+                      
                 if self.is_dragging_slider and event.type == pygame.MOUSEMOTION:
-                    # Update current step based on mouse X
                     rel_x = max(0, min(event.pos[0] - self.slider_rect.x, self.slider_rect.width))
                     self.current_step = int((rel_x / self.slider_rect.width) * (len(self.history) - 1))
+            
+            if self.is_playing:
+               now = pygame.time.get_ticks()
+               if now - self.last_update_time > self.play_speed:
+                  if self.current_step < len(self.history) - 1:
+                        self.current_step += 1
+                  else:
+                        self.is_playing = False
+                  self.last_update_time = now
 
             self.render()
             pygame.display.flip()
             clock.tick(60)
-
-# Implementation inside main.py or bottom of visualization.py:
-if __name__ == "__main__":
-    sim = Simulator(30, 20)
-    sim.generate_ground_truth(MapConfig(num_agents=1, num_victims=3))
-    
-    # Simple logic to make the agent move right for the demo
-    from agent import Agent
-    test_agent = Agent("Robot1", 2, 2, 30, 20)
-    sim.add_agent(test_agent)
-    
-    history = sim.run(50)
-    viz = Visualizer(history)
-    viz.run()
