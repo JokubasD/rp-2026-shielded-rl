@@ -75,7 +75,7 @@ class Simulator:
         Performs a number of steps of the simulation.
 
         Parameters:
-        steps: The number of steps to perform
+        steps: The maximum number of steps to perform
 
         Returns:
         A list of the ground truth states after each step.
@@ -85,7 +85,54 @@ class Simulator:
         record.append(deepcopy(self.ground_truth))
         for _ in range(steps):
             record.append(self.step())
+            if self.metrics.outcome != RunOutcome.IN_PROGRESS:
+                break
+        if self.metrics.outcome == RunOutcome.IN_PROGRESS:
+            self.metrics.outcome = RunOutcome.TIMEOUT
         return record
+
+    def _collect_intents(self) -> dict[Agent, tuple[int, int]]:
+        """
+        Each agent picks an action. WAIT and collisions are recorded immediately and the
+        agent's intent becomes its current position. Otherwise the intent is
+        the target cell.
+        """
+        intents: dict[Agent, tuple[int, int]] = {}
+        for agent in self.agents:
+            action = agent.get_action()
+            if action == AgentAction.WAIT:
+                self.metrics.record_wait(agent)
+                intents[agent] = (agent.x, agent.y)
+                continue
+
+            tx, ty = self._target_cell(agent, action)
+            if not (0 <= tx < self.width and 0 <= ty < self.height):
+                self.metrics.record_terrain_collision(agent)
+                intents[agent] = (agent.x, agent.y)
+            elif self.ground_truth.traversability[ty][tx] == UNTRAVERSIBLE:
+                self.metrics.record_terrain_collision(agent)
+                intents[agent] = (agent.x, agent.y)
+            elif self.ground_truth.victims[ty][tx] == VICTIM_PRESENT:
+                self.metrics.record_victim_collision(agent)
+                intents[agent] = (agent.x, agent.y)
+            else:
+                intents[agent] = (tx, ty)
+        return intents
+
+    def _target_cell(self, agent: Agent, action: AgentAction) -> tuple[int, int]:
+        tx, ty = agent.x, agent.y
+        match action:
+            case AgentAction.MOVE_UP:
+                ty -= 1
+            case AgentAction.MOVE_DOWN:
+                ty += 1
+            case AgentAction.MOVE_LEFT:
+                tx -= 1
+            case AgentAction.MOVE_RIGHT:
+                tx += 1
+        return tx, ty
+
+    
     
     def generate_ground_truth(self, config: MapConfig | None = None) -> None:
         if config is None:
