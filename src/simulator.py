@@ -63,13 +63,15 @@ class Simulator:
         self.ground_truth.agents[agent.y][agent.x] = 1
         self.metrics.register_agent(agent)
 
-    def step(self) -> State:
+    def step(self) -> list[State]:
         """
         Performs a single step of the simulation.
         This includes agent actions, environment actions, and updating the ground truth.
 
         Returns:
-        The ground truth state after the step.
+        A list with elements:
+        list[0]: the ground truth state after the step
+        list[1:]: the states of the agents after the step
         """
         intents = self._collect_intents()
         self._resolve_agent_conflicts(intents)
@@ -82,9 +84,13 @@ class Simulator:
         self.metrics.steps_taken += 1
         self._update_found_metrics()
 
-        return deepcopy(self.ground_truth)
+        res = [deepcopy(self.ground_truth)]
+        for agent in self.agents:
+            res.append(deepcopy(agent.perception))
 
-    def run(self, steps: int) -> list[State]:
+        return res
+
+    def run(self, steps: int) -> list[list[State]]:
         """
         Performs a number of steps of the simulation.
 
@@ -92,13 +98,23 @@ class Simulator:
         steps: The maximum number of steps to perform
 
         Returns:
-        A list of the ground truth states after each step.
-        list[0] is the initial state before the sim is run
+        A list of size (#agents + 1) where
+        list[0] are the ground truth states
+        list[1:] are the states of the agents
+        First element of every list is the initial state before running the simulation
         """
-        record: list[State] = []
-        record.append(deepcopy(self.ground_truth))
+        record: list[list[State]] = []
+        # Record the initial states
+        record.append([deepcopy(self.ground_truth)])
+        for agent in self.agents:
+            record.append([deepcopy(agent.perception)])
+
         for _ in range(steps):
-            record.append(self.step())
+            # Record steps
+            step_result = self.step()
+            for i in range(len(step_result)):
+                record[i].append(step_result[i])
+
             if self.metrics.outcome != RunOutcome.IN_PROGRESS:
                 break
         if self.metrics.outcome == RunOutcome.IN_PROGRESS:
