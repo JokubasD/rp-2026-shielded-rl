@@ -22,6 +22,7 @@ class MapConfig:
     tunnel_vulnerability_severity: float = 0.4
     initial_fire_points: int = 1
     fire_spread_rate: float = 0.3
+    fire_duration: int = 8  # -1 means infinite duration
     start_room_width: int = 3
     start_room_length: int = 3
     min_room_width: int = 6
@@ -39,7 +40,7 @@ class Simulator:
         self.height = height
         self.agents: list[Agent] = []
         self.ground_truth = State(width, height)
-        self.fire_manager: FireManager = FireManager(width, height, 0.0) #? Start with a non-spreading fire manager, wondering if it is the right way
+        self.fire_manager: FireManager = FireManager(width, height, 0.0, 0.0) #? Start with a non-spreading fire manager, wondering if it is the right way
 
     def add_agent(self, agent: Agent) -> None:
         """
@@ -111,9 +112,9 @@ class Simulator:
         self.ground_truth.agents.matrix = _place_agents(self.width, self.height, config.num_agents, rooms, self.ground_truth.victims)
         self.ground_truth.victims.matrix = _place_victims(self.width, self.height, config.num_victims, rooms, self.ground_truth.agents)
 
-        self.fire_manager = FireManager(self.width, self.height, config.fire_spread_rate)
+        self.fire_manager = FireManager(self.width, self.height, config.fire_spread_rate, config.fire_duration)
         self.fire_manager.initialize_fire(self.ground_truth, config.initial_fire_points, rooms)
-        
+
         self.ground_truth.confidence.matrix = np.ones((self.height, self.width))
         return
 

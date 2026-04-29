@@ -11,6 +11,7 @@ class SimulatorTest(unittest.TestCase):
                            tunnel_vulnerability_probability=0.0,
                            initial_fire_points=3,
                            fire_spread_rate=0.3,
+                           fire_duration=-1,
                            start_room_width=5,
                            start_room_length=5,
                            min_room_width=10,
@@ -21,7 +22,7 @@ class SimulatorTest(unittest.TestCase):
                            max_tunnel_thickness=6,
                            num_victims=5)
         simulator.generate_ground_truth(config)
-        state_after_running = simulator.run(5)[-1]
+        state_after_running = simulator.run(10)[-1]
         # visualize_grid_gen(simulator.ground_truth.traversability, simulator.ground_truth.agents, 
         #                    simulator.ground_truth.victims, simulator.ground_truth.vulnerability,
         #                    simulator.ground_truth.fire)
