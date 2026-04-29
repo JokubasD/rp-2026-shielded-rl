@@ -120,6 +120,16 @@ class Simulator:
         return intents
 
     def _target_cell(self, agent: Agent, action: AgentAction) -> tuple[int, int]:
+        """
+        Calculates the cell targeted by an agent given its action.
+
+        Parameters:
+        agent: The agent to get the target cell for
+        action: The action the agent wants to perform
+
+        Returns:
+        The target cell indices
+        """
         tx, ty = agent.x, agent.y
         match action:
             case AgentAction.MOVE_UP:
@@ -187,6 +197,12 @@ class Simulator:
                 break
 
     def _commit_moves(self, intents: dict[Agent, tuple[int, int]]) -> None:
+        """
+        Commit the agent moves to the ground truth and update the agent positions.
+        
+        Parameters:
+        intents: The agent intents
+        """
         for agent, (tx, ty) in intents.items():
             if (tx, ty) == (agent.x, agent.y):
                 continue
@@ -195,6 +211,9 @@ class Simulator:
             agent.move_to(tx, ty)
 
     def _update_found_metrics(self) -> None:
+        """
+        Update the found metrics based on the current ground truth state.
+        """
         truth = (self.ground_truth.victims.matrix == VICTIM_PRESENT)
         total = int(truth.sum())
         self.metrics.total_victims = total
