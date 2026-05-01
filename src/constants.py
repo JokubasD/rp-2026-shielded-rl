@@ -1,6 +1,11 @@
 from dataclasses import dataclass
 from enum import Enum, IntEnum
 
+class RunOutcome(Enum):
+    IN_PROGRESS = "in_progress"
+    SUCCESS = "success"
+    TIMEOUT = "timeout"
+
 class AgentAction(IntEnum):
     MOVE_UP = 0
     MOVE_DOWN = 1

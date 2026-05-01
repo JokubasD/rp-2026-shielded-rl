@@ -1,5 +1,4 @@
 from copy import deepcopy
-from dataclasses import dataclass
 import random
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,6 +10,7 @@ from .state import State
 from .agent import *
 from .fire_manager import FireManager
 from .constants import *
+from .metric import Metric
 
 class Simulator:
     def __init__(self, width: int, height: int):
@@ -19,6 +19,7 @@ class Simulator:
         self.agents: list[Agent] = []
         self.ground_truth = State(width, height)
         self.fire_manager: FireManager = FireManager(width, height, 0.0, 0.0) #? Start with a non-spreading fire manager, wondering if it is the right way
+        self.metrics = Metric()
 
     def add_agent(self, agent: Agent) -> None:
         """
@@ -29,50 +30,207 @@ class Simulator:
         """
         self.agents.append(agent)
         self.ground_truth.agents[agent.y][agent.x] = 1
+        self.metrics.register_agent(agent)
 
-    def step(self) -> State:
+    def step(self) -> list[State]:
         """
         Performs a single step of the simulation.
         This includes agent actions, environment actions, and updating the ground truth.
 
         Returns:
-        The ground truth state after the step.
+        A list with elements:
+        list[0]: the ground truth state after the step
+        list[1:]: the states of the agents after the step
         """
-        # Perform agent actions
+        intents = self._collect_intents()
+        self._resolve_agent_conflicts(intents)
+        self._commit_moves(intents)
+
         for agent in self.agents:
-            action = agent.get_action()
-            is_move = action < 4
-            
-            if is_move:
-                self.ground_truth.agents[agent.y][agent.x] = 0
-                agent.move(action)
-                self.ground_truth.agents[agent.y][agent.x] = 1
-            
             agent.scan(self.ground_truth)
 
         # Perform environment actions (firespread, etc.)
         self.fire_manager.spread_fire(self.ground_truth)
+        self.metrics.steps_taken += 1
+        self._update_found_metrics()
 
-        # Don't let the returned state modify current state
-        result = deepcopy(self.ground_truth)
-        return result 
+        res = [deepcopy(self.ground_truth)]
+        for agent in self.agents:
+            res.append(deepcopy(agent.perception))
 
-    def run(self, steps: int) -> list[State]:
+        return res
+
+    def run(self, steps: int) -> list[list[State]]:
         """
         Performs a number of steps of the simulation.
 
         Parameters:
-        steps: The number of steps to perform
+        steps: The maximum number of steps to perform
 
         Returns:
-        A list of the ground truth states after each step.
-        list[0] is the initial state before the sim is run
+        A list of size (#agents + 1) where
+        list[0] are the ground truth states
+        list[1:] are the states of the agents
+        First element of every list is the initial state before running the simulation
         """
-        record: list[State] = []
-        record.append(deepcopy(self.ground_truth))
+        record: list[list[State]] = []
+        # Record the initial states
+        record.append([deepcopy(self.ground_truth)])
+        for agent in self.agents:
+            record.append([deepcopy(agent.perception)])
+
         for _ in range(steps):
-            record.append(self.step())
+            # Record steps
+            step_result = self.step()
+            for i in range(len(step_result)):
+                record[i].append(step_result[i])
+
+            if self.metrics.outcome != RunOutcome.IN_PROGRESS:
+                break
+        if self.metrics.outcome == RunOutcome.IN_PROGRESS:
+            self.metrics.outcome = RunOutcome.TIMEOUT
         return record
+
+    def _collect_intents(self) -> dict[Agent, tuple[int, int]]:
+        """
+        Each agent picks an action. WAIT and collisions are recorded immediately and the
+        agent's intent becomes its current position. Otherwise the intent is
+        the target cell.
+        """
+        intents: dict[Agent, tuple[int, int]] = {}
+        for agent in self.agents:
+            action = agent.get_action()
+            if action == AgentAction.WAIT:
+                self.metrics.record_wait(agent)
+                intents[agent] = (agent.x, agent.y)
+                continue
+
+            tx, ty = self._target_cell(agent, action)
+            if not (0 <= tx < self.width and 0 <= ty < self.height):
+                self.metrics.record_terrain_collision(agent)
+                intents[agent] = (agent.x, agent.y)
+            elif self.ground_truth.traversability[ty][tx] == TraversabilityLevel.UNTRAVERSIBLE:
+                self.metrics.record_terrain_collision(agent)
+                intents[agent] = (agent.x, agent.y)
+            elif self.ground_truth.victims[ty][tx] == VictimPresence.PRESENT:
+                self.metrics.record_victim_collision(agent)
+                intents[agent] = (agent.x, agent.y)
+            else:
+                intents[agent] = (tx, ty)
+        return intents
+
+    def _target_cell(self, agent: Agent, action: AgentAction) -> tuple[int, int]:
+        """
+        Calculates the cell targeted by an agent given its action.
+
+        Parameters:
+        agent: The agent to get the target cell for
+        action: The action the agent wants to perform
+
+        Returns:
+        The target cell indices
+        """
+        tx, ty = agent.x, agent.y
+        match action:
+            case AgentAction.MOVE_UP:
+                ty -= 1
+            case AgentAction.MOVE_DOWN:
+                ty += 1
+            case AgentAction.MOVE_LEFT:
+                tx -= 1
+            case AgentAction.MOVE_RIGHT:
+                tx += 1
+        return tx, ty
+
+    def _resolve_agent_conflicts(self, intents: dict[Agent, tuple[int, int]]) -> None:
+        """
+        Iteratively force conflicted movers to stay until no conflicts remain.
+        Three conflict types: same-target (multiple movers want one cell),
+        mover-into-stayer (a mover targets a cell whose occupant is staying),
+        and swap pairs.
+        """
+        while True:
+            changed = False
+
+            # all agents contesting one cell collide, non get to move.
+            target_groups: dict[tuple[int, int], list[Agent]] = {}
+            for agent in self.agents:
+                if intents[agent] == (agent.x, agent.y):
+                    continue
+                target_groups.setdefault(intents[agent], []).append(agent)
+            for movers in target_groups.values():
+                if len(movers) > 1:
+                    for a in movers:
+                        self.metrics.record_inter_agent_collision(a)
+                        intents[a] = (a.x, a.y)
+                    changed = True
+            if changed:
+                continue
+
+            # target cell is occupied by an agent that isn't moving away. Both agents collide.
+            stayers: dict[tuple[int, int], Agent] = {
+                (a.x, a.y): a for a in self.agents
+                if intents[a] == (a.x, a.y)
+            }
+            for mover in [a for a in self.agents if intents[a] != (a.x, a.y)]:
+                if intents[mover] in stayers:
+                    stayer = stayers[intents[mover]]
+                    self.metrics.record_inter_agent_collision(mover)
+                    self.metrics.record_inter_agent_collision(stayer)
+                    intents[mover] = (mover.x, mover.y)
+                    changed = True
+            if changed:
+                continue
+
+            # Two movers want each other's current cells.
+            movers = [a for a in self.agents if intents[a] != (a.x, a.y)]
+            for i, a in enumerate(movers):
+                for b in movers[i+1:]:
+                    if intents[a] == (b.x, b.y) and intents[b] == (a.x, a.y):
+                        self.metrics.record_inter_agent_collision(a)
+                        self.metrics.record_inter_agent_collision(b)
+                        intents[a] = (a.x, a.y)
+                        intents[b] = (b.x, b.y)
+                        changed = True
+
+            if not changed:
+                break
+
+    def _commit_moves(self, intents: dict[Agent, tuple[int, int]]) -> None:
+        """
+        Commit the agent moves to the ground truth and update the agent positions.
+        
+        Parameters:
+        intents: The agent intents
+        """
+        for agent, (tx, ty) in intents.items():
+            if (tx, ty) == (agent.x, agent.y):
+                continue
+            self.ground_truth.agents[agent.y][agent.x] = 0
+            self.ground_truth.agents[ty][tx] = 1
+            agent.move_to(tx, ty)
+
+    def _update_found_metrics(self) -> None:
+        """
+        Update the found metrics based on the current ground truth state.
+        """
+        truth = (self.ground_truth.victims.matrix == VictimPresence.PRESENT)
+        total = int(truth.sum())
+        self.metrics.total_victims = total
+        if total == 0:
+            return
+
+        union = np.zeros_like(truth, dtype=bool)
+        for agent in self.agents:
+            union |= (agent.perception.victims.matrix == VictimPresence.PRESENT)
+        found = int((truth & union).sum())
+        self.metrics.victims_found = found
+
+        if found > 0 and self.metrics.time_to_first_found is None:
+            self.metrics.time_to_first_found = self.metrics.steps_taken
+        if found == total and self.metrics.time_to_all_found is None:
+            self.metrics.time_to_all_found = self.metrics.steps_taken
+            self.metrics.outcome = RunOutcome.SUCCESS
     
     def generate_ground_truth(self, config: MapConfig | None = None) -> None:
         if config is None:

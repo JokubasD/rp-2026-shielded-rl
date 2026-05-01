@@ -69,6 +69,15 @@ class Agent:
         self.move_history.append((self.x, self.y))
         self.perception.agents[self.y][self.x] = 1
 
+    def move_to(self, x: int, y: int) -> None:
+        """
+        Commits the agent to a position, after the simulator does the validation.
+        """
+        self.perception.agents[self.y][self.x] = 0
+        self.x, self.y = x, y
+        self.move_history.append((self.x, self.y))
+        self.perception.agents[self.y][self.x] = 1
+
     def get_action(self) -> AgentAction:
         """
         To be overwritten for each research question.
