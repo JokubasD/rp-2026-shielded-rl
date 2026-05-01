@@ -24,12 +24,12 @@ class TraversabilityLevel(IntEnum):
     UNTRAVERSIBLE = 1
 
 class AgentPresence(IntEnum):
-    AGENT_NOT_PRESENT = 0
-    AGENT_PRESENT = 1
+    NOT_PRESENT = 0
+    PRESENT = 1
 
 class VictimPresence(IntEnum):
-    VICTIM_NOT_PRESENT = 0
-    VICTIM_PRESENT = 1
+    NOT_PRESENT = 0
+    PRESENT = 1
 
 @dataclass
 class MapConfig:

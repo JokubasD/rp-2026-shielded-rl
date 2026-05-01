@@ -38,7 +38,7 @@ class FireManager:
             y_range = random_room['y_range']
             random_x = random.randint(x_range[0], x_range[1] - 1)
             random_y = random.randint(y_range[0], y_range[1] - 1)
-            while (ground_truth.fire[random_y, random_x] == FireLevel.BURNING):
+            while (ground_truth.fire[random_y, random_x] == FireLevel.BURNING or ground_truth.victims[random_y, random_x] == VictimPresence.PRESENT):
                 random_x = random.randint(x_range[0], x_range[1] - 1)
                 random_y = random.randint(y_range[0], y_range[1] - 1)
             ground_truth.fire[random_y, random_x] = FireLevel.BURNING

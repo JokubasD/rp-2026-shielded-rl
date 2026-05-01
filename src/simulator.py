@@ -274,7 +274,7 @@ def _place_agents(
     victims: A matrix indicating the presence of victims (to avoid placing agents on top of victims)
     """
 
-    agents = np.full((y, x), AgentPresence.AGENT_NOT_PRESENT)
+    agents = np.full((y, x), AgentPresence.NOT_PRESENT)
 
     room_n = len(rooms)
 
@@ -284,10 +284,10 @@ def _place_agents(
         y_range = random_room['y_range']
         random_x = random.randint(x_range[0], x_range[1] - 1)
         random_y = random.randint(y_range[0], y_range[1] - 1)
-        while (agents[random_y, random_x] == AgentPresence.AGENT_PRESENT or victims[random_y, random_x] == VictimPresence.VICTIM_PRESENT):
+        while (agents[random_y, random_x] == AgentPresence.PRESENT or victims[random_y, random_x] == VictimPresence.PRESENT):
             random_x = random.randint(x_range[0], x_range[1] - 1)
             random_y = random.randint(y_range[0], y_range[1] - 1)
-        agents[random_y, random_x] = AgentPresence.AGENT_PRESENT
+        agents[random_y, random_x] = AgentPresence.PRESENT
     
     return agents
 
@@ -306,7 +306,7 @@ def _place_victims(
     agents: A matrix indicating the presence of agents (to avoid placing victims on top of agents)
     """
 
-    victims = np.full((y, x), VictimPresence.VICTIM_NOT_PRESENT)
+    victims = np.full((y, x), VictimPresence.NOT_PRESENT)
     room_n = len(rooms)
 
     for _ in range(k):
@@ -315,10 +315,10 @@ def _place_victims(
         y_range = random_room['y_range']
         random_x = random.randint(x_range[0], x_range[1] - 1)
         random_y = random.randint(y_range[0], y_range[1] - 1)
-        while (victims[random_y, random_x] == VictimPresence.VICTIM_PRESENT or agents[random_y, random_x] == AgentPresence.AGENT_PRESENT):
+        while (victims[random_y, random_x] == VictimPresence.PRESENT or agents[random_y, random_x] == AgentPresence.PRESENT):
             random_x = random.randint(x_range[0], x_range[1] - 1)
             random_y = random.randint(y_range[0], y_range[1] - 1)
-        victims[random_y, random_x] = VictimPresence.VICTIM_PRESENT
+        victims[random_y, random_x] = VictimPresence.PRESENT
 
     return victims
 
@@ -331,10 +331,10 @@ def visualize_grid_gen(traversability: Grid, agents: Grid, victims: Grid, vulner
     
     plt.imshow(traversability.matrix, cmap='binary', interpolation='nearest')
 
-    victim_mask = np.where(victims.matrix == VictimPresence.VICTIM_PRESENT, 1, np.nan)
+    victim_mask = np.where(victims.matrix == VictimPresence.PRESENT, 1, np.nan)
     plt.imshow(victim_mask, cmap='autumn', interpolation='nearest', alpha=1.0)
     
-    agent_mask = np.where(agents.matrix == AgentPresence.AGENT_PRESENT, 1, np.nan)
+    agent_mask = np.where(agents.matrix == AgentPresence.PRESENT, 1, np.nan)
     plt.imshow(agent_mask, cmap='winter', interpolation='nearest', alpha=1.0)
 
     vulnerability_mask = np.where(vulnerability.matrix > VulnerabilityLevel.SAFE.value, vulnerability.matrix, np.nan)
