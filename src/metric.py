@@ -24,12 +24,17 @@ class Metric:
         self.time_to_first_found: int | None = None
         self.time_to_all_found: int | None = None
 
+        # Fraction of traversable cells the agent has ever observed. [0, 1] per agent.
+        self.area_explored: dict[Agent, float] = {}
+        self.total_traversable: int = 0
+
     def register_agent(self, agent: Agent) -> None:
         self.terrain_collisions[agent] = 0
         self.victim_collisions[agent] = 0
         self.inter_agent_collisions[agent] = 0
         self.wait_actions[agent] = 0
         self.damage[agent] = 0
+        self.area_explored[agent] = 0.0
 
     def record_terrain_collision(self, agent: Agent) -> None:
         self.terrain_collisions[agent] += 1
