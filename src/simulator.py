@@ -73,6 +73,9 @@ class Simulator:
         list[0]: the ground truth state after the step
         list[1:]: the states of the agents after the step
         """
+        if not self.metrics.history:
+            self.metrics.record_snapshot()  # capture initial metric state
+
         intents = self._collect_intents()
         self._resolve_agent_conflicts(intents)
         self._commit_moves(intents)
@@ -84,6 +87,7 @@ class Simulator:
         self.metrics.steps_taken += 1
         self._update_found_metrics()
         self._update_area_explored()
+        self.metrics.record_snapshot()
 
         res = [deepcopy(self.ground_truth)]
         for agent in self.agents:
@@ -120,6 +124,9 @@ class Simulator:
                 break
         if self.metrics.outcome == RunOutcome.IN_PROGRESS:
             self.metrics.outcome = RunOutcome.TIMEOUT
+            if self.metrics.history:
+                # make final snapshot reflect the timeout outcome
+                self.metrics.history[-1] = self.metrics.snapshot()
         return record
 
     def _collect_intents(self) -> dict[Agent, tuple[int, int]]:
