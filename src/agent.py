@@ -1,5 +1,6 @@
 from .state import State
 from enum import IntEnum
+import numpy as np
 
 class AgentAction(IntEnum):
     MOVE_UP = 0
@@ -27,6 +28,8 @@ class Agent:
 
         self.illegal_moves = 0
 
+        self.explored: np.ndarray = np.zeros((height, width), dtype=bool) # Cells the agent has ever scanned
+
     def scan(self, state: State) -> None:
         """
         Retrieves information from the state passed in (with some noise/uncertainties?)
@@ -37,6 +40,7 @@ class Agent:
         for i in range(self.world_height):
             for j in range(self.world_width):
                 if self._tile_scanned(i, j):
+                    self.explored[i][j] = True
                     self.perception.confidence[i][j] = max(self.perception.confidence[i][j] - self.sigma, self.scan_accuracy)
                     self.perception.traversability[i][j] = state.traversability[i][j]
                     self.perception.victims[i][j] = state.victims[i][j]
