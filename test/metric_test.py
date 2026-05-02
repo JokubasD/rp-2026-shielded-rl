@@ -221,5 +221,72 @@ class TestAreaExplored(unittest.TestCase):
         self.assertAlmostEqual(sim.metrics.area_explored[b], 1 / 3)
 
 
+class TestMetricHistory(unittest.TestCase):
+    def test_history_length_initial_plus_each_step(self):
+        sim = Simulator(3, 3)
+        a = _make_agent("a", 1, 1, 3, 3, AgentAction.WAIT)
+        sim.add_agent(a)
+        sim.run(3)
+
+        # No victims -> runs full 3 steps then TIMEOUT. Initial + 3 = 4 snapshots.
+        self.assertEqual(len(sim.metrics.history), 4)
+        self.assertEqual(sim.metrics.history[0].step, 0)
+        self.assertEqual(sim.metrics.history[3].step, 3)
+
+    def test_initial_snapshot_has_zero_counters(self):
+        sim = Simulator(3, 3)
+        a = _make_agent("a", 1, 1, 3, 3, AgentAction.WAIT)
+        sim.add_agent(a)
+        sim.step()
+
+        snap0 = sim.metrics.history[0]
+        self.assertEqual(snap0.step, 0)
+        self.assertEqual(snap0.victims_found, 0)
+        self.assertEqual(snap0.wait_actions[a], 0)
+        self.assertEqual(snap0.area_explored[a], 0.0)
+        self.assertEqual(snap0.outcome, RunOutcome.IN_PROGRESS)
+
+    def test_history_records_per_step_progression(self):
+        sim = Simulator(3, 3)
+        a = _make_agent("a", 1, 1, 3, 3, AgentAction.WAIT)
+        sim.add_agent(a)
+        sim.run(2)
+
+        self.assertEqual(sim.metrics.history[0].wait_actions[a], 0)
+        self.assertEqual(sim.metrics.history[1].wait_actions[a], 1)
+        self.assertEqual(sim.metrics.history[2].wait_actions[a], 2)
+
+    def test_snapshot_isolated_from_subsequent_mutations(self):
+        sim = Simulator(3, 3)
+        a = _make_agent("a", 1, 1, 3, 3, AgentAction.WAIT)
+        sim.add_agent(a)
+        sim.step()
+
+        snap0 = sim.metrics.history[0]
+        sim.metrics.wait_actions[a] = 999
+        self.assertEqual(snap0.wait_actions[a], 0)
+
+    def test_timeout_reflected_in_last_snapshot(self):
+        sim = Simulator(3, 3)
+        a = _make_agent("a", 1, 1, 3, 3, AgentAction.WAIT)
+        sim.add_agent(a)
+        sim.run(2)
+
+        self.assertEqual(sim.metrics.outcome, RunOutcome.TIMEOUT)
+        self.assertEqual(sim.metrics.history[-1].outcome, RunOutcome.TIMEOUT)
+
+    def test_success_reflected_in_last_snapshot(self):
+        sim = Simulator(3, 3)
+        sim.ground_truth.victims[1][2] = VICTIM_PRESENT
+        a = _make_agent("a", 1, 1, 3, 3, AgentAction.WAIT, scan_radius=2)
+        sim.add_agent(a)
+        sim.run(5)
+
+        # Found in step 1, run breaks. Snapshots: [initial, after-step-1].
+        self.assertEqual(len(sim.metrics.history), 2)
+        self.assertEqual(sim.metrics.history[0].outcome, RunOutcome.IN_PROGRESS)
+        self.assertEqual(sim.metrics.history[1].outcome, RunOutcome.SUCCESS)
+
+
 if __name__ == "__main__":
     unittest.main()
