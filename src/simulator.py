@@ -83,6 +83,7 @@ class Simulator:
         # Perform environment actions (firespread, etc.)
         self.metrics.steps_taken += 1
         self._update_found_metrics()
+        self._update_area_explored()
 
         res = [deepcopy(self.ground_truth)]
         for agent in self.agents:
@@ -261,7 +262,23 @@ class Simulator:
         if found == total and self.metrics.time_to_all_found is None:
             self.metrics.time_to_all_found = self.metrics.steps_taken
             self.metrics.outcome = RunOutcome.SUCCESS
-    
+
+    def _update_area_explored(self) -> None:
+        """
+        Update each agent's fraction of traversable cells they have ever scanned.
+        """
+        traversable = (self.ground_truth.traversability.matrix == TRAVERSIBLE)
+        total = int(traversable.sum())
+        self.metrics.total_traversable = total
+        if total == 0:
+            for agent in self.agents:
+                self.metrics.area_explored[agent] = 0.0
+            return
+
+        for agent in self.agents:
+            explored = int(agent.explored[traversable].sum())
+            self.metrics.area_explored[agent] = explored / total
+
     def generate_ground_truth(self, config: MapConfig | None = None) -> None:
         if config is None:
             config = MapConfig()
