@@ -178,5 +178,48 @@ class TestVictimsFound(unittest.TestCase):
         self.assertEqual(sim.metrics.outcome, RunOutcome.TIMEOUT)
 
 
+class TestAreaExplored(unittest.TestCase):
+    def test_static_agent_explores_self_cell_only(self):
+        sim = Simulator(3, 3)
+        a = _make_agent("a", 1, 1, 3, 3, AgentAction.WAIT, scan_radius=0)
+        sim.add_agent(a)
+        sim.run(1)
+
+        self.assertEqual(sim.metrics.total_traversable, 9)
+        self.assertAlmostEqual(sim.metrics.area_explored[a], 1 / 9)
+
+    def test_walking_increases_coverage(self):
+        # Movement happens before scan, so the starting cell is never observed.
+        # After 2 right-steps from (0,0): scans at (1,0) then (2,0). 2/3 covered.
+        sim = Simulator(3, 1)
+        a = _make_agent("a", 0, 0, 3, 1, AgentAction.MOVE_RIGHT, scan_radius=0)
+        sim.add_agent(a)
+        sim.run(2)
+
+        self.assertAlmostEqual(sim.metrics.area_explored[a], 2 / 3)
+
+    def test_walls_excluded_from_denominator(self):
+        sim = Simulator(3, 3)
+        sim.ground_truth.traversability[2][2] = UNTRAVERSIBLE
+        a = _make_agent("a", 1, 1, 3, 3, AgentAction.WAIT, scan_radius=10)
+        sim.add_agent(a)
+        sim.run(1)
+
+        self.assertEqual(sim.metrics.total_traversable, 8)
+        self.assertAlmostEqual(sim.metrics.area_explored[a], 1.0)
+
+    def test_per_agent_independent(self):
+        sim = Simulator(3, 1)
+        a = _make_agent("a", 0, 0, 3, 1, AgentAction.WAIT, scan_radius=0)
+        b = _make_agent("b", 2, 0, 3, 1, AgentAction.WAIT, scan_radius=0)
+        sim.add_agent(a)
+        sim.add_agent(b)
+        sim.run(1)
+
+        # Each agent only scans its own cell — no shared union.
+        self.assertAlmostEqual(sim.metrics.area_explored[a], 1 / 3)
+        self.assertAlmostEqual(sim.metrics.area_explored[b], 1 / 3)
+
+
 if __name__ == "__main__":
     unittest.main()
