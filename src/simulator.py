@@ -3,9 +3,9 @@ from dataclasses import dataclass
 import random
 import numpy as np
 import matplotlib.pyplot as plt
-from grid import Grid
-from state import State
-from agent import *
+from .grid import Grid
+from .state import State
+from .agent import *
 
 TRAVERSIBLE = 0
 UNTRAVERSIBLE = 1

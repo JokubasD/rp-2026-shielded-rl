@@ -1,4 +1,4 @@
-from state import State
+from .state import State
 from enum import IntEnum
 
 class AgentAction(IntEnum):
