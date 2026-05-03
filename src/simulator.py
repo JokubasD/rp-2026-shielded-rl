@@ -3,9 +3,13 @@ from dataclasses import dataclass
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from enum import Enum
+
 from .grid import Grid
 from .state import State
 from .agent import *
+from .metric import Metric, RunOutcome
 
 TRAVERSIBLE = 0
 UNTRAVERSIBLE = 1
@@ -16,10 +20,21 @@ AGENT_PRESENT = 1
 VICTIM_NOT_PRESENT = 0
 VICTIM_PRESENT = 1
 
+class VulnerabilityLevel(float, Enum): #? Maybe create a separate TUNNEL vulnerability level?
+    SAFE = 0.0
+    VULNERABLE = 0.6
+    HIGH_RISK = 1.0
+
 @dataclass
 class MapConfig:
     num_rooms: int = 4
     unconnected_probability: float = 0.0
+    room_vulnerability_probability: float = 0.3
+    room_vulnerability_severity: float = 0.4
+    tunnel_vulnerability_probability: float = 0.3
+    tunnel_vulnerability_severity: float = 0.4
+    start_room_width: int = 3
+    start_room_length: int = 3
     min_room_width: int = 6
     max_room_width: int = 12
     min_room_length: int = 6
@@ -35,6 +50,7 @@ class Simulator:
         self.height = height
         self.agents: list[Agent] = []
         self.ground_truth = State(width, height)
+        self.metrics = Metric()
 
     def add_agent(self, agent: Agent) -> None:
         """
@@ -45,60 +61,220 @@ class Simulator:
         """
         self.agents.append(agent)
         self.ground_truth.agents[agent.y][agent.x] = 1
+        self.metrics.register_agent(agent)
 
-    def step(self) -> State:
+    def step(self) -> list[State]:
         """
         Performs a single step of the simulation.
         This includes agent actions, environment actions, and updating the ground truth.
 
         Returns:
-        The ground truth state after the step.
+        A list with elements:
+        list[0]: the ground truth state after the step
+        list[1:]: the states of the agents after the step
         """
-        # Perform agent actions
+        intents = self._collect_intents()
+        self._resolve_agent_conflicts(intents)
+        self._commit_moves(intents)
+
         for agent in self.agents:
-            action = agent.get_action()
-            is_move = action < 4
-            
-            if is_move:
-                self.ground_truth.agents[agent.y][agent.x] = 0
-                agent.move(action)
-                self.ground_truth.agents[agent.y][agent.x] = 1
-            
             agent.scan(self.ground_truth)
 
         # Perform environment actions (firespread, etc.)
+        self.metrics.steps_taken += 1
+        self._update_found_metrics()
 
-        # Don't let the returned state modify current state
-        result = deepcopy(self.ground_truth)
-        return result 
+        res = [deepcopy(self.ground_truth)]
+        for agent in self.agents:
+            res.append(deepcopy(agent.perception))
 
-    def run(self, steps: int) -> list[State]:
+        return res
+
+    def run(self, steps: int) -> list[list[State]]:
         """
         Performs a number of steps of the simulation.
 
         Parameters:
-        steps: The number of steps to perform
+        steps: The maximum number of steps to perform
 
         Returns:
-        A list of the ground truth states after each step.
-        list[0] is the initial state before the sim is run
+        A list of size (#agents + 1) where
+        list[0] are the ground truth states
+        list[1:] are the states of the agents
+        First element of every list is the initial state before running the simulation
         """
-        record: list[State] = []
-        record.append(deepcopy(self.ground_truth))
+        record: list[list[State]] = []
+        # Record the initial states
+        record.append([deepcopy(self.ground_truth)])
+        for agent in self.agents:
+            record.append([deepcopy(agent.perception)])
+
         for _ in range(steps):
-            record.append(self.step())
+            # Record steps
+            step_result = self.step()
+            for i in range(len(step_result)):
+                record[i].append(step_result[i])
+
+            if self.metrics.outcome != RunOutcome.IN_PROGRESS:
+                break
+        if self.metrics.outcome == RunOutcome.IN_PROGRESS:
+            self.metrics.outcome = RunOutcome.TIMEOUT
         return record
+
+    def _collect_intents(self) -> dict[Agent, tuple[int, int]]:
+        """
+        Each agent picks an action. WAIT and collisions are recorded immediately and the
+        agent's intent becomes its current position. Otherwise the intent is
+        the target cell.
+        """
+        intents: dict[Agent, tuple[int, int]] = {}
+        for agent in self.agents:
+            action = agent.get_action()
+            if action == AgentAction.WAIT:
+                self.metrics.record_wait(agent)
+                intents[agent] = (agent.x, agent.y)
+                continue
+
+            tx, ty = self._target_cell(agent, action)
+            if not (0 <= tx < self.width and 0 <= ty < self.height):
+                self.metrics.record_terrain_collision(agent)
+                intents[agent] = (agent.x, agent.y)
+            elif self.ground_truth.traversability[ty][tx] == UNTRAVERSIBLE:
+                self.metrics.record_terrain_collision(agent)
+                intents[agent] = (agent.x, agent.y)
+            elif self.ground_truth.victims[ty][tx] == VICTIM_PRESENT:
+                self.metrics.record_victim_collision(agent)
+                intents[agent] = (agent.x, agent.y)
+            else:
+                intents[agent] = (tx, ty)
+        return intents
+
+    def _target_cell(self, agent: Agent, action: AgentAction) -> tuple[int, int]:
+        """
+        Calculates the cell targeted by an agent given its action.
+
+        Parameters:
+        agent: The agent to get the target cell for
+        action: The action the agent wants to perform
+
+        Returns:
+        The target cell indices
+        """
+        tx, ty = agent.x, agent.y
+        match action:
+            case AgentAction.MOVE_UP:
+                ty -= 1
+            case AgentAction.MOVE_DOWN:
+                ty += 1
+            case AgentAction.MOVE_LEFT:
+                tx -= 1
+            case AgentAction.MOVE_RIGHT:
+                tx += 1
+        return tx, ty
+
+    def _resolve_agent_conflicts(self, intents: dict[Agent, tuple[int, int]]) -> None:
+        """
+        Iteratively force conflicted movers to stay until no conflicts remain.
+        Three conflict types: same-target (multiple movers want one cell),
+        mover-into-stayer (a mover targets a cell whose occupant is staying),
+        and swap pairs.
+        """
+        while True:
+            changed = False
+
+            # all agents contesting one cell collide, non get to move.
+            target_groups: dict[tuple[int, int], list[Agent]] = {}
+            for agent in self.agents:
+                if intents[agent] == (agent.x, agent.y):
+                    continue
+                target_groups.setdefault(intents[agent], []).append(agent)
+            for movers in target_groups.values():
+                if len(movers) > 1:
+                    for a in movers:
+                        self.metrics.record_inter_agent_collision(a)
+                        intents[a] = (a.x, a.y)
+                    changed = True
+            if changed:
+                continue
+
+            # target cell is occupied by an agent that isn't moving away. Both agents collide.
+            stayers: dict[tuple[int, int], Agent] = {
+                (a.x, a.y): a for a in self.agents
+                if intents[a] == (a.x, a.y)
+            }
+            for mover in [a for a in self.agents if intents[a] != (a.x, a.y)]:
+                if intents[mover] in stayers:
+                    stayer = stayers[intents[mover]]
+                    self.metrics.record_inter_agent_collision(mover)
+                    self.metrics.record_inter_agent_collision(stayer)
+                    intents[mover] = (mover.x, mover.y)
+                    changed = True
+            if changed:
+                continue
+
+            # Two movers want each other's current cells.
+            movers = [a for a in self.agents if intents[a] != (a.x, a.y)]
+            for i, a in enumerate(movers):
+                for b in movers[i+1:]:
+                    if intents[a] == (b.x, b.y) and intents[b] == (a.x, a.y):
+                        self.metrics.record_inter_agent_collision(a)
+                        self.metrics.record_inter_agent_collision(b)
+                        intents[a] = (a.x, a.y)
+                        intents[b] = (b.x, b.y)
+                        changed = True
+
+            if not changed:
+                break
+
+    def _commit_moves(self, intents: dict[Agent, tuple[int, int]]) -> None:
+        """
+        Commit the agent moves to the ground truth and update the agent positions.
+        
+        Parameters:
+        intents: The agent intents
+        """
+        for agent, (tx, ty) in intents.items():
+            if (tx, ty) == (agent.x, agent.y):
+                continue
+            self.ground_truth.agents[agent.y][agent.x] = 0
+            self.ground_truth.agents[ty][tx] = 1
+            agent.move_to(tx, ty)
+
+    def _update_found_metrics(self) -> None:
+        """
+        Update the found metrics based on the current ground truth state.
+        """
+        truth = (self.ground_truth.victims.matrix == VICTIM_PRESENT)
+        total = int(truth.sum())
+        self.metrics.total_victims = total
+        if total == 0:
+            return
+
+        union = np.zeros_like(truth, dtype=bool)
+        for agent in self.agents:
+            union |= (agent.perception.victims.matrix == VICTIM_PRESENT)
+        found = int((truth & union).sum())
+        self.metrics.victims_found = found
+
+        if found > 0 and self.metrics.time_to_first_found is None:
+            self.metrics.time_to_first_found = self.metrics.steps_taken
+        if found == total and self.metrics.time_to_all_found is None:
+            self.metrics.time_to_all_found = self.metrics.steps_taken
+            self.metrics.outcome = RunOutcome.SUCCESS
     
     def generate_ground_truth(self, config: MapConfig | None = None) -> None:
         if config is None:
             config = MapConfig()
         # generates and sets the 2D grid with agent and victims, currently with preset values.
-        self.ground_truth.traversability.matrix, rooms = _generate_traversability_matrix(self.width, self.height, 
+        self.ground_truth.traversability.matrix, rooms, tunnels = _generate_traversability_matrix(self.width, self.height, 
                                                                                         config.num_rooms, config.unconnected_probability, 
+                                                                                        config.start_room_width, config.start_room_length,
                                                                                         config.min_room_width, config.max_room_width, 
                                                                                         config.min_room_length, config.max_room_length, 
                                                                                         config.min_tunnel_thickness, config.max_tunnel_thickness)
-        
+        self.ground_truth.vulnerability.matrix = _generate_vulnerability_matrix(self.width, self.height, rooms, tunnels,
+                                                                                config.room_vulnerability_probability, config.tunnel_vulnerability_probability,
+                                                                                config.room_vulnerability_severity, config.tunnel_vulnerability_severity)
         self.ground_truth.agents.matrix = _place_agents(self.width, self.height, config.num_agents, rooms, self.ground_truth.victims)
         self.ground_truth.victims.matrix = _place_victims(self.width, self.height, config.num_victims, rooms, self.ground_truth.agents)
         self.ground_truth.confidence.matrix = np.ones((self.height, self.width))
@@ -107,16 +283,18 @@ class Simulator:
 def _generate_traversability_matrix(
         x: int, y: int,
         n: int, u_p: float,
+        s_width: int, s_length: int,
         w_min: int, w_max: int,
         l_min: int, l_max: int,
         t_min: int, t_max: int
-        ) -> tuple[np.ndarray, list[dict]]:
+        ) -> tuple[np.ndarray, list[dict], list[dict]]:
     """
-    Generates 2D traversability matrix with rooms and connecting corridors, and returns the room bounds and the matrix.
+    Generates 2D traversability matrix with rooms and connecting tunnels, and returns the room and tunnel bounds and the matrix.
     
     Parameters:
     x, y: Dimensions of the grid
-    n: Number of rooms
+    n: Number of rooms (outside of first room in top left)
+    s_width, s_length: Dimensions of the first room in the top left
     u_p: (unconnected_probability) The probability a room is unconnected
     w_min, w_max: Min/Max width of the rooms
     l_min, l_max: Min/Max length of the rooms
@@ -127,13 +305,27 @@ def _generate_traversability_matrix(
         raise ValueError(f"probability of unconnected rooms should be between 0 and 1 but was: {u_p}")
     
     matrix = np.full((y, x), UNTRAVERSIBLE)
-    room_seeds = np.zeros((2, n), dtype=int)
+    room_seeds = np.zeros((2, n + 1), dtype=int)
     rooms = []
+    tunnels = []
 
     tunnel_width = random.randint(t_min, t_max)
     half_tunnel_width = tunnel_width // 2
 
-    for p in range(n):
+    # create first room in top left corner
+    c = s_width // 2
+    f = s_length // 2
+    room_seeds[0][0] = c
+    room_seeds[1][0] = f
+    x_start = 0
+    x_end = s_width
+    y_start = 0
+    y_end = s_length
+    matrix[y_start:y_end, x_start:x_end] = TRAVERSIBLE
+    #? Should we store the first room in the rooms list?
+
+    # create rooms and store their centers in room_seeds
+    for p in range(1, n + 1):
         c = random.randint(0,x - 1)
         f = random.randint(0,y - 1)
 
@@ -158,41 +350,97 @@ def _generate_traversability_matrix(
             'center': (c, f)
         })
     
-    for q in range(n - 1):
+    # connect rooms with tunnels, skipping some based on unconnected_probability
+    for q in range(n):
         connect = random.random() >= u_p
 
         if (connect):
             a_x, a_y = room_seeds[0][q], room_seeds[1][q]
             b_x, b_y = room_seeds[0][q + 1], room_seeds[1][q + 1]
 
-            def get_slice(start, end):
-                return slice(min(start, end), max(start, end) + 1)
+            def get_bounds(start, end) -> tuple[int, int]:
+                return (min(start, end), max(start, end) + 1)
             
             direction = random.randint(0, 1)
-            if (direction == 1):
-                x_slice = get_slice(a_x, b_x)
-                y_start = max(0, a_y - half_tunnel_width)
-                y_end = min(y, a_y + half_tunnel_width + 1)
-                matrix[y_start:y_end, x_slice] = TRAVERSIBLE
+            if (direction == 1): # horizontal first, then vertical # TODO probably should also return the tunnels same as with rooms
+                hx_bounds = get_bounds(a_x, b_x)
+                hy_bounds = (max(0, a_y - half_tunnel_width), min(y, a_y + half_tunnel_width + 1))
+                matrix[hy_bounds[0]:hy_bounds[1], hx_bounds[0]:hx_bounds[1]] = TRAVERSIBLE
                 
-                x_start = max(0, b_x - half_tunnel_width)
-                x_end = min(x, b_x + half_tunnel_width + 1)
-                y_slice = get_slice(a_y, b_y)
-                matrix[y_slice, x_start:x_end] = TRAVERSIBLE
-            else:
-                x_start = max(0, a_x - half_tunnel_width)
-                x_end = min(x, a_x + half_tunnel_width + 1)
-                y_slice = get_slice(a_y, b_y)
-                matrix[y_slice, x_start:x_end] = TRAVERSIBLE
+                vx_bounds = (max(0, b_x - half_tunnel_width), min(x, b_x + half_tunnel_width + 1))
+                vy_bounds = get_bounds(a_y, b_y)
+                matrix[vy_bounds[0]:vy_bounds[1], vx_bounds[0]:vx_bounds[1]] = TRAVERSIBLE
                 
-                # Line 23: Horizontal to B (Fixed coordinates typo from pseudocode)
-                x_slice = get_slice(a_x, b_x)
-                y_start = max(0, b_y - half_tunnel_width)
-                y_end = min(y, b_y + half_tunnel_width + 1)
-                matrix[y_start:y_end, x_slice] = TRAVERSIBLE
+                tunnels.append({
+                    'horizontal_x_range': hx_bounds,
+                    'horizontal_y_range': hy_bounds,
+                    'vertical_x_bounds': vx_bounds,
+                    'vertical_y_bounds': vy_bounds
+                })
+            else: # vertical first, then horizontal
+                vx_bounds = (max(0, a_x - half_tunnel_width), min(x, a_x + half_tunnel_width + 1))
+                vy_bounds = get_bounds(a_y, b_y)
+                matrix[vy_bounds[0]:vy_bounds[1], vx_bounds[0]:vx_bounds[1]] = TRAVERSIBLE
+                
+                hx_bounds = get_bounds(a_x, b_x)
+                hy_bounds = (max(0, b_y - half_tunnel_width), min(y, b_y + half_tunnel_width + 1))
+                matrix[hy_bounds[0]:hy_bounds[1], hx_bounds[0]:hx_bounds[1]] = TRAVERSIBLE
 
-    return matrix, rooms
+                tunnels.append({
+                    'horizontal_x_range': hx_bounds,
+                    'horizontal_y_range': hy_bounds,
+                    'vertical_x_bounds': vx_bounds,
+                    'vertical_y_bounds': vy_bounds
+                })
 
+    return matrix, rooms, tunnels
+
+def _generate_vulnerability_matrix(
+        x: int, y: int, 
+        rooms: list[dict],
+        tunnels: list[dict],
+        r_v_p: float, t_v_p: float,
+        r_v_s: float, t_v_s: float
+        ) -> np.ndarray:
+    """
+    Generates 2D vulnerability matrix for rooms and tunnels based on the provided probabilities.
+    
+    Parameters:
+    x, y: Dimensions of the grid
+    rooms, tunnels: the rooms and tunnels generated by _generate_traversability_matrix
+    r_v_p, t_v_p: room and tunnel vulnerability probability, respectively. Dictates how probable it is a room will be either high risk or vulnerable.
+    r_v_s, t_v_s: room and tunnel vulnerability severity, respectively. A higher value results in a higher chance of high risk.
+    """
+    if not (0 <= r_v_p <= 1 and 0 <= t_v_p <= 1 and 0 <= r_v_s <= 1 and 0 <= t_v_s <= 1):
+        raise ValueError("One of the vulnerability probabilities is not between 0 and 1.")
+
+    vulnerability = np.full((y, x), VulnerabilityLevel.SAFE)
+    for tunnel in tunnels:
+        vulnerable = random.random() <= t_v_p
+        if not (vulnerable):
+            continue
+        vulnerability_level = VulnerabilityLevel.VULNERABLE
+        if (random.random() <= t_v_s):
+            vulnerability_level = VulnerabilityLevel.HIGH_RISK
+        
+        hx = tunnel['horizontal_x_range']
+        hy = tunnel['horizontal_y_range']
+        vulnerability[hy[0]:hy[1], hx[0]:hx[1]] = vulnerability_level
+        
+        vx = tunnel['vertical_x_bounds']
+        vy = tunnel['vertical_y_bounds']
+        vulnerability[vy[0]:vy[1], vx[0]:vx[1]] = vulnerability_level
+
+    for room in rooms:
+        vulnerable = random.random() <= r_v_p
+        if not (vulnerable):
+            continue
+        vulnerability_level = VulnerabilityLevel.VULNERABLE
+        if (random.random() <= r_v_s):
+            vulnerability_level = VulnerabilityLevel.HIGH_RISK
+        vulnerability[room['y_range'][0]:room['y_range'][1], room['x_range'][0]:room['x_range'][1]] = vulnerability_level
+
+    return vulnerability
 
 def _place_agents(
         x: int, y: int, 
@@ -259,11 +507,11 @@ def _place_victims(
     return victims
 
 
-def visualize_grid_gen(traversability: Grid, agents: Grid, victims: Grid) -> None:
+def visualize_grid_gen(traversability: Grid, agents: Grid, victims: Grid, vulnerability: Grid) -> None:
     """
     Visualizes the map, agents, and victims in a single plot.
     """
-    plt.figure(figsize=(10, 10))
+    plt.figure(figsize=(7, 7))
     
     plt.imshow(traversability.matrix, cmap='binary', interpolation='nearest')
 
@@ -273,6 +521,29 @@ def visualize_grid_gen(traversability: Grid, agents: Grid, victims: Grid) -> Non
     agent_mask = np.where(agents.matrix == AGENT_PRESENT, 1, np.nan)
     plt.imshow(agent_mask, cmap='winter', interpolation='nearest', alpha=1.0)
 
-    plt.title("Search & Rescue: Map, Agents (Blue), and Victims (Red)")
-    plt.axis('off')
+    vulnerability_mask = np.where(vulnerability.matrix > VulnerabilityLevel.SAFE.value, vulnerability.matrix, np.nan)
+    plt.imshow(vulnerability_mask, cmap='autumn_r', interpolation='nearest', alpha=0.3, vmin=0.5, vmax=1)
+
+    vuln_cmap = plt.cm.autumn_r
+    
+    legend_elements = [
+        mpatches.Patch(facecolor='black', edgecolor='black', label='Untraversable (Wall)'),
+        mpatches.Patch(facecolor='white', edgecolor='gray', label='Traversable (Floor)'),
+        mpatches.Patch(facecolor='blue', label='Agent'),
+        mpatches.Patch(facecolor='red', label='Victim'),
+        mpatches.Patch(facecolor=vuln_cmap(0.6), alpha=0.6, edgecolor='gray', label='Vulnerable'),
+        mpatches.Patch(facecolor=vuln_cmap(1.0), alpha=0.6, edgecolor='gray', label='High Risk')
+    ]
+
+    # Place the legend outside the plot so it doesn't cover the map
+    plt.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.02, 1), borderaxespad=0.)
+
+    rows, cols = traversability.matrix.shape
+    plt.xticks(np.arange(-0.5, cols, 1), [])
+    plt.yticks(np.arange(-0.5, rows, 1), [])
+    plt.grid(color='gray', linewidth=0.1)   
+    plt.tick_params(bottom=False, left=False)
+
+    plt.title("Search & Rescue Map")
+    plt.tight_layout()
     plt.show()

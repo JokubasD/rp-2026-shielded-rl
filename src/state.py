@@ -5,6 +5,7 @@ class State:
         self.width = width
         self.height = height
         self.traversability = Grid(width=width, height=height)
+        self.vulnerability = Grid(width=width, height=height)
         self.victims = Grid(width=width, height=height)
         self.agents = Grid(width=width, height=height)
         self.confidence = Grid(width=width, height=height)
