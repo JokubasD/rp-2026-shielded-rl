@@ -1,7 +1,6 @@
 import pygame
 import sys
 
-# --- STYLING ---
 COLORS = {
     "wall_base": (45, 55, 65), 
     "wall_highlight": (70, 85, 95), 
@@ -40,14 +39,19 @@ class Checkbox:
 class Visualizer:
     def __init__(self, history, cell_size=25):
         pygame.init()
-        self.history = history
+        #self.history = history
+        self.all_histories = history
+        self.ground_truth = history[0]
+        self.selected_history_index = 0
+
         self.cell_size = cell_size
         self.current_step = 0
 
         # Fonts and dimensions
         self.font = pygame.font.SysFont("Arial", 20)
         self.small_font = pygame.font.SysFont("Arial", 14)
-        self.rows, self.cols = history[0].height, history[0].width
+        first_grid = self.all_histories[0][0]
+        self.rows, self.cols = first_grid.height, first_grid.width
         self.grid_w, self.grid_h = self.cols * cell_size, self.rows * cell_size
         self.sidebar_w, self.bottom_h = 200, 80
         
@@ -55,7 +59,23 @@ class Visualizer:
         
         # Adaptive ui layout math
         self.sidebar_x = self.grid_w + 10
-        padding, row_h, header_h = 15, 30, 45
+        padding = 15
+        header_h = 45
+        row_h = 30
+
+        # Perspective panel (Top)
+        self.selector_y = 10
+        btn_h = 25
+        btn_margin = 5
+        header_h = 45
+        padding = 15
+
+        num_items = len(self.all_histories)
+        num_rows = ((num_items - 1) // 3) + 1
+
+        self.selector_h = header_h + (num_rows * (btn_h + btn_margin)) + padding
+
+        self.layers_y = self.selector_y + self.selector_h + 15
 
         # Initialize checkboxes
         self.checkboxes = [
@@ -64,14 +84,17 @@ class Visualizer:
             Checkbox(self.grid_w + 20, 110, "Agents", True),
             Checkbox(self.grid_w + 20, 140, "Confidence Map", False),
         ]
+        self.layers_panel_h = (len(self.checkboxes) * row_h) + header_h
 
         # Position the checkboxes and calculate the Layers panel height
         for i, cb in enumerate(self.checkboxes):
-            cb.rect.y = padding + header_h + (i * row_h)
+           cb.rect.y = self.layers_y + header_h + (i * row_h)
+
+        # Mission stats pannel
+        self.stats_y = self.layers_y + self.layers_panel_h + padding
+        self.stats_panel_h = 130
         
         self.layers_panel_h = (len(self.checkboxes) * row_h) + header_h
-        self.stats_y = padding + self.layers_panel_h + 20
-        self.stats_panel_h = 150 # Fixed height for stats
 
         # Interactive elements
         self.play_button_rect = pygame.Rect(self.sidebar_x + 60, self.grid_h + 25, 70, 35)
@@ -129,10 +152,39 @@ class Visualizer:
         pygame.draw.line(self.screen, COLORS["wall_shadow"], rect.bottomleft, rect.bottomright, 2)
         pygame.draw.line(self.screen, COLORS["wall_shadow"], rect.topright, rect.bottomright, 2)
 
+    def draw_perspective_selector(self):
+        """Draws buttons to switch between Ground Truth and Agents"""
+        x, y = self.sidebar_x, self.selector_y
+        self.draw_panel_frame(x, y, self.sidebar_w - 20, self.selector_h, "Perspective")
+        
+        num_perspectives = len(self.all_histories)
+        btn_w, btn_h = 40, 25
+        
+        for i in range(num_perspectives):
+            bx = x + 15 + (i % 3) * (btn_w + 5)
+            by = y + 40 + (i // 3) * (btn_h + 5)
+            btn_rect = pygame.Rect(bx, by, btn_w, btn_h)
+            
+            color = COLORS["accent"] if self.selected_history_index == i else COLORS["panel_border"]
+            pygame.draw.rect(self.screen, color, btn_rect, border_radius=4)
+            
+            label = "GT" if i == 0 else f"A{i}"
+            txt = self.small_font.render(label, True, COLORS["text"])
+            self.screen.blit(txt, (btn_rect.centerx - txt.get_width()//2, btn_rect.centery - txt.get_height()//2))
+
+    def handle_selector_click(self, mouse_pos):
+        """Checks if the user clicked a perspective button"""
+        x, y = self.sidebar_x, self.selector_y
+        for i in range(len(self.all_histories)):
+            bx = x + 15 + (i % 3) * (45)
+            by = y + 40 + (i // 3) * (30)
+            if pygame.Rect(bx, by, 40, 25).collidepoint(mouse_pos):
+                self.selected_history_index = i
+
     def render(self):
         #1. base layers
         self.screen.blit(self.full_bg, (0, 0))
-        state = self.history[self.current_step]
+        state = self.all_histories[self.selected_history_index][self.current_step]
 
         # 2. simulation data
         # traversability
@@ -172,24 +224,24 @@ class Visualizer:
                     if conf_val > 0:
                         conf_tile.fill((0, 0, 0, 0))
             
-                        alpha = int(conf_val * 150) 
-                        color = (255, 140, 0, alpha)
+                        alpha = int(conf_val * 170) 
+                        color = (250, 180, 0, alpha)
                         
                         pygame.draw.rect(conf_tile, color, conf_tile.get_rect())
                         self.screen.blit(conf_tile, (x * self.cell_size, y * self.cell_size))
 
         # 3. SIDEBAR PANELS
-        self.draw_panel_frame(self.sidebar_x, 15, self.sidebar_w - 20, self.layers_panel_h, "Layers")
-        self.draw_panel_frame(self.sidebar_x, self.stats_y, self.sidebar_w - 20, self.stats_panel_h, "Mission Stats")
-        
+        self.draw_perspective_selector()
+
+        self.draw_panel_frame(self.sidebar_x, self.layers_y, self.sidebar_w - 20, self.layers_panel_h, "Layers")
         for cb in self.checkboxes:
-            cb.draw(self.screen)
-            
+           cb.draw(self.screen)
+
+        self.draw_panel_frame(self.sidebar_x, self.stats_y, self.sidebar_w - 20, self.stats_panel_h, "Mission Stats")
         stat_txt = self.small_font.render(f"Step Count: {self.current_step}", True, COLORS["text"])
         self.screen.blit(stat_txt, (self.sidebar_x + 15, self.stats_y + 45))
 
         # 4. CONTROLS (Footer)
-        # Play Button
         btn_color = COLORS["accent"] if not self.is_playing else (200, 50, 50)
         pygame.draw.rect(self.screen, btn_color, self.play_button_rect, border_radius=6)
         lbl = "STOP" if self.is_playing else "PLAY"
@@ -198,7 +250,7 @@ class Visualizer:
 
         # Slider
         pygame.draw.rect(self.screen, (60, 60, 70), self.slider_rect, border_radius=4)
-        progress = self.current_step / max(1, (len(self.history) - 1))
+        progress = self.current_step / max(1, (len(self.ground_truth) - 1))
         handle_x = self.slider_rect.x + (progress * self.slider_rect.width)
         pygame.draw.circle(self.screen, COLORS["accent"], (int(handle_x), self.slider_rect.centery), 10)
         
@@ -215,6 +267,7 @@ class Visualizer:
                
                 # Click events
                 if event.type == pygame.MOUSEBUTTONDOWN:
+                    self.handle_selector_click(event.pos)
                     if self.play_button_rect.collidepoint(event.pos):
                        self.is_playing = not self.is_playing
                     
@@ -228,18 +281,18 @@ class Visualizer:
                 # Slider events
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RIGHT:
-                          self.current_step = min(self.current_step + 1, len(self.history) - 1)
+                          self.current_step = min(self.current_step + 1, len(self.ground_truth) - 1)
                     elif event.key == pygame.K_LEFT:
                           self.current_step = max(self.current_step - 1, 0)
                       
                 if self.is_dragging_slider and event.type == pygame.MOUSEMOTION:
                     rel_x = max(0, min(event.pos[0] - self.slider_rect.x, self.slider_rect.width))
-                    self.current_step = int((rel_x / self.slider_rect.width) * (len(self.history) - 1))
+                    self.current_step = int((rel_x / self.slider_rect.width) * (len(self.ground_truth) - 1))
             
             if self.is_playing:
                now = pygame.time.get_ticks()
                if now - self.last_update_time > self.play_speed:
-                  if self.current_step < len(self.history) - 1:
+                  if self.current_step < len(self.ground_truth) - 1:
                         self.current_step += 1
                   else:
                         self.is_playing = False
