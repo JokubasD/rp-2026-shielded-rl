@@ -1,6 +1,7 @@
 import unittest
 
-from src.simulator import Simulator, UNTRAVERSIBLE, VICTIM_PRESENT
+from src.simulator import Simulator
+from src.constants import *
 from src.agent import Agent, AgentAction
 from src.metric import RunOutcome
 
@@ -39,7 +40,7 @@ class TestTerrainCollision(unittest.TestCase):
 
     def test_wall_counts_as_terrain(self):
         sim = Simulator(3, 3)
-        sim.ground_truth.traversability[0][1] = UNTRAVERSIBLE
+        sim.ground_truth.traversability[0][1] = TraversabilityLevel.UNTRAVERSIBLE
         a = _make_agent("a", 0, 0, 3, 3, AgentAction.MOVE_RIGHT)
         sim.add_agent(a)
         sim.run(2)
@@ -51,7 +52,7 @@ class TestTerrainCollision(unittest.TestCase):
 class TestVictimCollision(unittest.TestCase):
     def test_victim_acts_as_obstacle(self):
         sim = Simulator(3, 3)
-        sim.ground_truth.victims[0][1] = VICTIM_PRESENT
+        sim.ground_truth.victims[0][1] = VictimPresence.PRESENT
         a = _make_agent("a", 0, 0, 3, 3, AgentAction.MOVE_RIGHT)
         sim.add_agent(a)
         sim.run(2)
@@ -60,7 +61,7 @@ class TestVictimCollision(unittest.TestCase):
         self.assertEqual(sim.metrics.damage[a], 2)
         self.assertEqual((a.x, a.y), (0, 0))
         # Victim still on the map — not killed.
-        self.assertEqual(sim.ground_truth.victims[0][1], VICTIM_PRESENT)
+        self.assertEqual(sim.ground_truth.victims[0][1], VictimPresence.PRESENT)
 
 
 class TestInterAgentCollision(unittest.TestCase):
@@ -138,7 +139,7 @@ class TestInterAgentCollision(unittest.TestCase):
 class TestVictimsFound(unittest.TestCase):
     def test_victim_found_via_scan_triggers_success(self):
         sim = Simulator(3, 3)
-        sim.ground_truth.victims[1][2] = VICTIM_PRESENT
+        sim.ground_truth.victims[1][2] = VictimPresence.PRESENT
         # Scan radius 2 covers (1,2) from (1,1).
         a = _make_agent("a", 1, 1, 3, 3, AgentAction.WAIT, scan_radius=2)
         sim.add_agent(a)
@@ -165,8 +166,8 @@ class TestVictimsFound(unittest.TestCase):
 
     def test_partial_find_does_not_trigger_success(self):
         sim = Simulator(5, 5)
-        sim.ground_truth.victims[0][0] = VICTIM_PRESENT  # found
-        sim.ground_truth.victims[4][4] = VICTIM_PRESENT  # never seen
+        sim.ground_truth.victims[0][0] = VictimPresence.PRESENT  # found
+        sim.ground_truth.victims[4][4] = VictimPresence.PRESENT  # never seen
         a = _make_agent("a", 0, 0, 5, 5, AgentAction.WAIT, scan_radius=1)
         sim.add_agent(a)
         sim.run(3)

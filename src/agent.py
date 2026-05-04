@@ -1,12 +1,5 @@
 from .state import State
-from enum import IntEnum
-
-class AgentAction(IntEnum):
-    MOVE_UP = 0
-    MOVE_DOWN = 1
-    MOVE_LEFT = 2
-    MOVE_RIGHT = 3
-    WAIT = 4
+from .constants import AgentAction
 
 class Agent:
     def __init__(self, name: str, x: int, y: int, width: int, height: int, 

@@ -1,12 +1,5 @@
-from enum import Enum
 from .agent import Agent
-
-
-class RunOutcome(Enum):
-    IN_PROGRESS = "in_progress"
-    SUCCESS = "success"
-    TIMEOUT = "timeout"
-
+from .constants import RunOutcome
 
 class Metric:
     def __init__(self):

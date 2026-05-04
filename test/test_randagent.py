@@ -1,7 +1,7 @@
 import unittest
 
 from src.agents.random import RandAgent
-from src.agent import AgentAction
+from src.constants import AgentAction
 
 class RandAgentTest(unittest.TestCase):
 

@@ -7,7 +7,11 @@ class SimulatorTest(unittest.TestCase):
         simulator = Simulator(100, 100)
         config = MapConfig(num_rooms=7,
                            unconnected_probability=0.0,
-                           room_vulnerability_probability=0.5,
+                           room_vulnerability_probability=0.0,
+                           tunnel_vulnerability_probability=0.0,
+                           initial_fire_points=3,
+                           fire_spread_rate=0.3,
+                           fire_duration=-1,
                            start_room_width=5,
                            start_room_length=5,
                            min_room_width=10,
@@ -18,8 +22,13 @@ class SimulatorTest(unittest.TestCase):
                            max_tunnel_thickness=6,
                            num_victims=5)
         simulator.generate_ground_truth(config)
-        visualize_grid_gen(simulator.ground_truth.traversability, simulator.ground_truth.agents, 
-                           simulator.ground_truth.victims, simulator.ground_truth.vulnerability)
+        state_after_running = simulator.run(10)[0][-1]
+        # visualize_grid_gen(simulator.ground_truth.traversability, simulator.ground_truth.agents, 
+        #                    simulator.ground_truth.victims, simulator.ground_truth.vulnerability,
+        #                    simulator.ground_truth.fire)
+        visualize_grid_gen(state_after_running.traversability, state_after_running.agents, 
+                           state_after_running.victims, state_after_running.vulnerability,
+                           state_after_running.fire)
     
     def test_add_agent(self):
         sim = Simulator(5, 5)
