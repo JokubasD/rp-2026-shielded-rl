@@ -1,48 +1,16 @@
 from copy import deepcopy
-from dataclasses import dataclass
 import random
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from enum import Enum
+import matplotlib.colors as mcolors
 
 from .grid import Grid
 from .state import State
 from .agent import *
-from .metric import Metric, RunOutcome
-
-TRAVERSIBLE = 0
-UNTRAVERSIBLE = 1
-
-AGENT_NOT_PRESENT = 0
-AGENT_PRESENT = 1
-
-VICTIM_NOT_PRESENT = 0
-VICTIM_PRESENT = 1
-
-class VulnerabilityLevel(float, Enum): #? Maybe create a separate TUNNEL vulnerability level?
-    SAFE = 0.0
-    VULNERABLE = 0.6
-    HIGH_RISK = 1.0
-
-@dataclass
-class MapConfig:
-    num_rooms: int = 4
-    unconnected_probability: float = 0.0
-    room_vulnerability_probability: float = 0.3
-    room_vulnerability_severity: float = 0.4
-    tunnel_vulnerability_probability: float = 0.3
-    tunnel_vulnerability_severity: float = 0.4
-    start_room_width: int = 3
-    start_room_length: int = 3
-    min_room_width: int = 6
-    max_room_width: int = 12
-    min_room_length: int = 6
-    max_room_length: int = 12
-    min_tunnel_thickness: int = 1
-    max_tunnel_thickness: int = 3
-    num_agents: int = 0
-    num_victims: int = 2
+from .fire_manager import FireManager
+from .constants import *
+from .metric import Metric
 
 class Simulator:
     def __init__(self, width: int, height: int):
@@ -50,6 +18,7 @@ class Simulator:
         self.height = height
         self.agents: list[Agent] = []
         self.ground_truth = State(width, height)
+        self.fire_manager: FireManager = FireManager(width, height, 0.0, 0.0) #? Start with a non-spreading fire manager, wondering if it is the right way
         self.metrics = Metric()
 
     def add_agent(self, agent: Agent) -> None:
@@ -84,6 +53,7 @@ class Simulator:
             agent.scan(self.ground_truth)
 
         # Perform environment actions (firespread, etc.)
+        self.fire_manager.spread_fire(self.ground_truth)
         self.metrics.steps_taken += 1
         self._update_found_metrics()
         self._update_area_explored()
@@ -147,10 +117,10 @@ class Simulator:
             if not (0 <= tx < self.width and 0 <= ty < self.height):
                 self.metrics.record_terrain_collision(agent)
                 intents[agent] = (agent.x, agent.y)
-            elif self.ground_truth.traversability[ty][tx] == UNTRAVERSIBLE:
+            elif self.ground_truth.traversability[ty][tx] == TraversabilityLevel.UNTRAVERSIBLE:
                 self.metrics.record_terrain_collision(agent)
                 intents[agent] = (agent.x, agent.y)
-            elif self.ground_truth.victims[ty][tx] == VICTIM_PRESENT:
+            elif self.ground_truth.victims[ty][tx] == VictimPresence.PRESENT:
                 self.metrics.record_victim_collision(agent)
                 intents[agent] = (agent.x, agent.y)
             else:
@@ -252,7 +222,7 @@ class Simulator:
         """
         Update the found metrics based on the current ground truth state.
         """
-        truth = (self.ground_truth.victims.matrix == VICTIM_PRESENT)
+        truth = (self.ground_truth.victims.matrix == VictimPresence.PRESENT)
         total = int(truth.sum())
         self.metrics.total_victims = total
         if total == 0:
@@ -260,7 +230,7 @@ class Simulator:
 
         union = np.zeros_like(truth, dtype=bool)
         for agent in self.agents:
-            union |= (agent.perception.victims.matrix == VICTIM_PRESENT)
+            union |= (agent.perception.victims.matrix == VictimPresence.PRESENT)
         found = int((truth & union).sum())
         self.metrics.victims_found = found
 
@@ -274,7 +244,7 @@ class Simulator:
         """
         Update each agent's fraction of traversable cells they have ever scanned.
         """
-        traversable = (self.ground_truth.traversability.matrix == TRAVERSIBLE)
+        traversable = (self.ground_truth.traversability.matrix == TraversabilityLevel.TRAVERSIBLE)
         total = int(traversable.sum())
         self.metrics.total_traversable = total
         if total == 0:
@@ -301,6 +271,10 @@ class Simulator:
                                                                                 config.room_vulnerability_severity, config.tunnel_vulnerability_severity)
         self.ground_truth.agents.matrix = _place_agents(self.width, self.height, config.num_agents, rooms, self.ground_truth.victims)
         self.ground_truth.victims.matrix = _place_victims(self.width, self.height, config.num_victims, rooms, self.ground_truth.agents)
+
+        self.fire_manager = FireManager(self.width, self.height, config.fire_spread_rate, config.fire_duration)
+        self.fire_manager.initialize_fire(self.ground_truth, config.initial_fire_points, rooms)
+
         self.ground_truth.confidence.matrix = np.ones((self.height, self.width))
         return
 
@@ -328,7 +302,7 @@ def _generate_traversability_matrix(
     if not (0 <= u_p <= 1):
         raise ValueError(f"probability of unconnected rooms should be between 0 and 1 but was: {u_p}")
     
-    matrix = np.full((y, x), UNTRAVERSIBLE)
+    matrix = np.full((y, x), TraversabilityLevel.UNTRAVERSIBLE)
     room_seeds = np.zeros((2, n + 1), dtype=int)
     rooms = []
     tunnels = []
@@ -345,7 +319,7 @@ def _generate_traversability_matrix(
     x_end = s_width
     y_start = 0
     y_end = s_length
-    matrix[y_start:y_end, x_start:x_end] = TRAVERSIBLE
+    matrix[y_start:y_end, x_start:x_end] = TraversabilityLevel.TRAVERSIBLE
     #? Should we store the first room in the rooms list?
 
     # create rooms and store their centers in room_seeds
@@ -367,7 +341,7 @@ def _generate_traversability_matrix(
         y_start = max(0, f - half_random_length)
         y_end = min(y, f + half_random_length + 1)
 
-        matrix[y_start:y_end, x_start:x_end] = TRAVERSIBLE
+        matrix[y_start:y_end, x_start:x_end] = TraversabilityLevel.TRAVERSIBLE
         rooms.append({
             'x_range': (x_start, x_end),
             'y_range': (y_start, y_end),
@@ -389,11 +363,11 @@ def _generate_traversability_matrix(
             if (direction == 1): # horizontal first, then vertical # TODO probably should also return the tunnels same as with rooms
                 hx_bounds = get_bounds(a_x, b_x)
                 hy_bounds = (max(0, a_y - half_tunnel_width), min(y, a_y + half_tunnel_width + 1))
-                matrix[hy_bounds[0]:hy_bounds[1], hx_bounds[0]:hx_bounds[1]] = TRAVERSIBLE
+                matrix[hy_bounds[0]:hy_bounds[1], hx_bounds[0]:hx_bounds[1]] = TraversabilityLevel.TRAVERSIBLE
                 
                 vx_bounds = (max(0, b_x - half_tunnel_width), min(x, b_x + half_tunnel_width + 1))
                 vy_bounds = get_bounds(a_y, b_y)
-                matrix[vy_bounds[0]:vy_bounds[1], vx_bounds[0]:vx_bounds[1]] = TRAVERSIBLE
+                matrix[vy_bounds[0]:vy_bounds[1], vx_bounds[0]:vx_bounds[1]] = TraversabilityLevel.TRAVERSIBLE
                 
                 tunnels.append({
                     'horizontal_x_range': hx_bounds,
@@ -404,11 +378,11 @@ def _generate_traversability_matrix(
             else: # vertical first, then horizontal
                 vx_bounds = (max(0, a_x - half_tunnel_width), min(x, a_x + half_tunnel_width + 1))
                 vy_bounds = get_bounds(a_y, b_y)
-                matrix[vy_bounds[0]:vy_bounds[1], vx_bounds[0]:vx_bounds[1]] = TRAVERSIBLE
+                matrix[vy_bounds[0]:vy_bounds[1], vx_bounds[0]:vx_bounds[1]] = TraversabilityLevel.TRAVERSIBLE
                 
                 hx_bounds = get_bounds(a_x, b_x)
                 hy_bounds = (max(0, b_y - half_tunnel_width), min(y, b_y + half_tunnel_width + 1))
-                matrix[hy_bounds[0]:hy_bounds[1], hx_bounds[0]:hx_bounds[1]] = TRAVERSIBLE
+                matrix[hy_bounds[0]:hy_bounds[1], hx_bounds[0]:hx_bounds[1]] = TraversabilityLevel.TRAVERSIBLE
 
                 tunnels.append({
                     'horizontal_x_range': hx_bounds,
@@ -482,20 +456,20 @@ def _place_agents(
     victims: A matrix indicating the presence of victims (to avoid placing agents on top of victims)
     """
 
-    agents = np.full((y, x), AGENT_NOT_PRESENT)
+    agents = np.full((y, x), AgentPresence.NOT_PRESENT)
 
     room_n = len(rooms)
 
-    for i in range(n):
+    for _ in range(n):
         random_room = rooms[random.randint(0, room_n - 1)]
         x_range = random_room['x_range']
         y_range = random_room['y_range']
         random_x = random.randint(x_range[0], x_range[1] - 1)
         random_y = random.randint(y_range[0], y_range[1] - 1)
-        while (agents[random_y, random_x] == AGENT_PRESENT or victims[random_y, random_x] == VICTIM_PRESENT):
+        while (agents[random_y, random_x] == AgentPresence.PRESENT or victims[random_y, random_x] == VictimPresence.PRESENT):
             random_x = random.randint(x_range[0], x_range[1] - 1)
             random_y = random.randint(y_range[0], y_range[1] - 1)
-        agents[random_y, random_x] = AGENT_PRESENT
+        agents[random_y, random_x] = AgentPresence.PRESENT
     
     return agents
 
@@ -514,52 +488,61 @@ def _place_victims(
     agents: A matrix indicating the presence of agents (to avoid placing victims on top of agents)
     """
 
-    victims = np.full((y, x), VICTIM_NOT_PRESENT)
+    victims = np.full((y, x), VictimPresence.NOT_PRESENT)
     room_n = len(rooms)
 
-    for j in range(k):
+    for _ in range(k):
         random_room = rooms[random.randint(0, room_n - 1)]
         x_range = random_room['x_range']
         y_range = random_room['y_range']
         random_x = random.randint(x_range[0], x_range[1] - 1)
         random_y = random.randint(y_range[0], y_range[1] - 1)
-        while (victims[random_y, random_x] == VICTIM_PRESENT or agents[random_y, random_x] == AGENT_PRESENT):
+        while (victims[random_y, random_x] == VictimPresence.PRESENT or agents[random_y, random_x] == AgentPresence.PRESENT):
             random_x = random.randint(x_range[0], x_range[1] - 1)
             random_y = random.randint(y_range[0], y_range[1] - 1)
-        victims[random_y, random_x] = VICTIM_PRESENT
+        victims[random_y, random_x] = VictimPresence.PRESENT
 
     return victims
 
 
-def visualize_grid_gen(traversability: Grid, agents: Grid, victims: Grid, vulnerability: Grid) -> None:
+def visualize_grid_gen(traversability: Grid, agents: Grid, victims: Grid, vulnerability: Grid, fire: Grid) -> None:
     """
-    Visualizes the map, agents, and victims in a single plot.
+    Visualizes the map, vulnerability, fire, agents, and victims in a single plot.
     """
     plt.figure(figsize=(7, 7))
     
     plt.imshow(traversability.matrix, cmap='binary', interpolation='nearest')
 
-    victim_mask = np.where(victims.matrix == VICTIM_PRESENT, 1, np.nan)
+    victim_mask = np.where(victims.matrix == VictimPresence.PRESENT, 1, np.nan)
     plt.imshow(victim_mask, cmap='autumn', interpolation='nearest', alpha=1.0)
     
-    agent_mask = np.where(agents.matrix == AGENT_PRESENT, 1, np.nan)
+    agent_mask = np.where(agents.matrix == AgentPresence.PRESENT, 1, np.nan)
     plt.imshow(agent_mask, cmap='winter', interpolation='nearest', alpha=1.0)
 
     vulnerability_mask = np.where(vulnerability.matrix > VulnerabilityLevel.SAFE.value, vulnerability.matrix, np.nan)
     plt.imshow(vulnerability_mask, cmap='autumn_r', interpolation='nearest', alpha=0.3, vmin=0.5, vmax=1)
-
     vuln_cmap = plt.cm.autumn_r
     
+    flammable_mask = np.where(fire.matrix == FireLevel.FLAMMABLE.value, 1, np.nan)
+    burning_mask = np.where(fire.matrix == FireLevel.BURNING.value, 1, np.nan)
+    burnt_mask = np.where(fire.matrix == FireLevel.BURNT.value, 1, np.nan)
+
+    plt.imshow(flammable_mask, cmap=mcolors.ListedColormap(['gold']), interpolation='nearest', alpha=0.3)
+    plt.imshow(burning_mask, cmap=mcolors.ListedColormap(['darkorange']), interpolation='nearest', alpha=0.85)
+    plt.imshow(burnt_mask, cmap=mcolors.ListedColormap(['dimgray']), interpolation='nearest', alpha=0.9)
+
     legend_elements = [
         mpatches.Patch(facecolor='black', edgecolor='black', label='Untraversable (Wall)'),
         mpatches.Patch(facecolor='white', edgecolor='gray', label='Traversable (Floor)'),
         mpatches.Patch(facecolor='blue', label='Agent'),
         mpatches.Patch(facecolor='red', label='Victim'),
         mpatches.Patch(facecolor=vuln_cmap(0.6), alpha=0.6, edgecolor='gray', label='Vulnerable'),
-        mpatches.Patch(facecolor=vuln_cmap(1.0), alpha=0.6, edgecolor='gray', label='High Risk')
+        mpatches.Patch(facecolor=vuln_cmap(1.0), alpha=0.6, edgecolor='gray', label='High Risk'),
+        mpatches.Patch(facecolor='gold', alpha=0.5, edgecolor='gray', label='Flammable'),
+        mpatches.Patch(facecolor='darkorange', alpha=0.85, edgecolor='darkred', label='Burning'),
+        mpatches.Patch(facecolor='dimgray', alpha=0.9, edgecolor='black', label='Burnt')
     ]
 
-    # Place the legend outside the plot so it doesn't cover the map
     plt.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.02, 1), borderaxespad=0.)
 
     rows, cols = traversability.matrix.shape
