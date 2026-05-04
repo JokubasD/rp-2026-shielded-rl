@@ -1,5 +1,4 @@
 import unittest
-import numpy as np
 
 from src.state import State
 from src.agent import Agent, AgentAction

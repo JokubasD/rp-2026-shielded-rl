@@ -1,5 +1,5 @@
 from .state import State
-from enum import IntEnum
+from .constants import AgentAction
 
 import numpy as np
 from numpy.typing import NDArray
@@ -8,13 +8,6 @@ import tcod
 from tcod import libtcodpy
 
 LOS_THRESHOLD = 1
-
-class AgentAction(IntEnum):
-    MOVE_UP = 0
-    MOVE_DOWN = 1
-    MOVE_LEFT = 2
-    MOVE_RIGHT = 3
-    WAIT = 4
 
 class Agent:
     def __init__(self, name: str, x: int, y: int, width: int, height: int, 
@@ -83,6 +76,15 @@ class Agent:
 
         self.perception.agents[self.y][self.x] = 0
         self.x, self.y = target_x, target_y
+        self.move_history.append((self.x, self.y))
+        self.perception.agents[self.y][self.x] = 1
+
+    def move_to(self, x: int, y: int) -> None:
+        """
+        Commits the agent to a position, after the simulator does the validation.
+        """
+        self.perception.agents[self.y][self.x] = 0
+        self.x, self.y = x, y
         self.move_history.append((self.x, self.y))
         self.perception.agents[self.y][self.x] = 1
 
