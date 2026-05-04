@@ -2,3 +2,4 @@ __pycache__
 .python-version
 pyproject.toml
 pytest.ini
+uv.lock
