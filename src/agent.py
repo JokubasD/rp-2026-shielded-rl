@@ -1,6 +1,8 @@
 from .state import State
 from .constants import AgentAction
 
+from dataclasses import dataclass
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -8,6 +10,18 @@ from tcod.map import compute_fov
 from tcod.libtcodpy import FOV_RESTRICTIVE
 
 LOS_THRESHOLD = 1
+
+@dataclass
+class Scan:
+    xs: NDArray
+    ys: NDArray
+    traversability: NDArray
+    vulnerability: NDArray
+    victims: NDArray
+    agents: NDArray
+    fire: NDArray
+    confidence: NDArray
+
 
 class Agent:
     def __init__(self, name: str, x: int, y: int, width: int, height: int, 
@@ -29,7 +43,7 @@ class Agent:
 
         self.illegal_moves = 0
 
-    def scan(self, state: State) -> None:
+    def scan(self, state: State) -> Scan:
         """
         Retrieves information from the state passed in (with some noise/uncertainties?)
 
@@ -37,16 +51,19 @@ class Agent:
         state: The true world to scan from
         """
         visible = self._tiles_in_radius() & self._tiles_in_los(state)
-        
-        for y in range(self.world_height):
-            for x in range(self.world_width):
-                if visible[y, x] == 1:
-                    self.perception.confidence[y][x] = max(self.perception.confidence[y][x] - self.decay, self._tile_accuracy(y, x))
-                    self.perception.traversability[y][x] = state.traversability[y][x]
-                    self.perception.victims[y][x] = state.victims[y][x]
-                    self.perception.agents[y][x] = state.agents[y][x]
-                else:
-                    self.perception.confidence[y][x] = max(self.perception.confidence[y][x] - self.decay, 0)
+        confidence_bounds = np.where(visible, self._tile_accuracy(), 0)
+
+        self.perception.traversability[visible] = trvs = state.traversability[visible]
+        self.perception.vulnerability[visible] = vuln = state.vulnerability[visible]
+        self.perception.victims[visible] = vict = state.victims[visible]
+        self.perception.agents[visible] = agnt = state.agents[visible]
+        self.perception.fire[visible] = fire = state.fire[visible]
+        self.perception.confidence.matrix = np.maximum(self.perception.confidence.matrix - self.decay, confidence_bounds)
+
+        ys, xs = np.nonzero(visible)
+        conf = self.perception.confidence.matrix[visible]
+
+        return Scan(xs, ys, trvs, vuln, vict, agnt, fire, conf)
 
     def move(self, direction: AgentAction) -> None:
         """
@@ -97,14 +114,14 @@ class Agent:
         """
         return AgentAction.MOVE_RIGHT
 
-    def _tiles_in_radius(self) -> NDArray:
+    def _tiles_in_radius(self) -> NDArray[np.bool]:
         """
         Returns a mask of all tiles within scan_radius of the agent
         """
         y, x = np.ogrid[:self.world_height, :self.world_width]
         return (y - self.y)**2 + (x - self.x)**2 <= self.scan_radius**2 # euclidean distance
     
-    def _tiles_in_los(self, state: State) -> NDArray:
+    def _tiles_in_los(self, state: State) -> NDArray[np.bool]:
         """
         Basically just TCOD's Restrictive Precise Angle Shadowcasting FOV calculation
 
@@ -114,12 +131,10 @@ class Agent:
         transparency = np.where(state.traversability.matrix >= LOS_THRESHOLD, 0, 1)
         return compute_fov(transparency, (self.y, self.x), self.scan_radius, True, FOV_RESTRICTIVE)
     
-    def _tile_accuracy(self, row: int, col: int) -> float:
-        acc = self.scan_accuracy
+    def _tile_accuracy(self) -> NDArray[np.float64]:
         if self.scan_falloff:
-            var = (self.scan_radius / 3) ** 2
-            dx = col - self.x
-            dy = row - self.y
-            acc *= np.exp(-0.5 * (dx**2 + dy**2) / var)
-        
-        return acc
+            var = (self. scan_radius / 3) ** 2
+            y, x = np.ogrid[:self.world_height, :self.world_width]
+            return self.scan_accuracy * np.exp(-0.5 * ((x - self.x)**2 + (y - self.y)**2) / var)
+        else:
+            return np.full((self.world_height, self.world_width), self.scan_accuracy)
