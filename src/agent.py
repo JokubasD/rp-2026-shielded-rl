@@ -4,8 +4,8 @@ from .constants import AgentAction
 import numpy as np
 from numpy.typing import NDArray
 
-import tcod
-from tcod import libtcodpy
+from tcod.map import compute_fov
+from tcod.libtcodpy import FOV_RESTRICTIVE
 
 LOS_THRESHOLD = 1
 
@@ -23,7 +23,7 @@ class Agent:
         self.decay = decay # Certainty decay per time step [0,1]
         self.scan_accuracy = scan_accuracy # Scan accuracy [0,1]
         self.scan_radius = scan_radius # How far the agent can see when it scans
-        self.scan_falloff = scan_falloff # Whether to have scan be less accurate further from robot
+        self.scan_falloff = scan_falloff # Whether scan accuracy should decrease with distance
 
         self.move_history: list[tuple[int, int]] = [(x, y)] # Maintain a log of what positions the agent has been in for stats
 
@@ -112,7 +112,7 @@ class Agent:
         of radius is different to our own, so we need to combine it with a radius mask later. 
         """
         transparency = np.where(state.traversability.matrix >= LOS_THRESHOLD, 0, 1)
-        return tcod.map.compute_fov(transparency, (self.y, self.x), self.scan_radius, True, libtcodpy.FOV_RESTRICTIVE)
+        return compute_fov(transparency, (self.y, self.x), self.scan_radius, True, FOV_RESTRICTIVE)
     
     def _tile_accuracy(self, row: int, col: int) -> float:
         acc = self.scan_accuracy

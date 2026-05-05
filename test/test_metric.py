@@ -11,7 +11,7 @@ def _make_agent(name, x, y, w, h, action, scan_radius=0):
     class FixedAgent(Agent):
         def get_action(self):
             return action
-    return FixedAgent(name, x, y, w, h, sigma=0.05, scan_accuracy=0.9, scan_radius=scan_radius)
+    return FixedAgent(name, x, y, w, h, decay=0.05, scan_accuracy=0.9, scan_radius=scan_radius, scan_falloff=False)
 
 
 class TestWaitMetric(unittest.TestCase):
