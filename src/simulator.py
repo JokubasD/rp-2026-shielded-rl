@@ -232,9 +232,13 @@ class Simulator:
             self.metrics.time_to_all_found = self.metrics.steps_taken
             self.metrics.outcome = RunOutcome.SUCCESS
     
-    def generate_ground_truth(self, config: MapConfig | None = None) -> None:
+    def generate_ground_truth(self, config: MapConfig | None = None, seed: int | None = None) -> None:
         if config is None:
             config = MapConfig()
+        if seed is None:
+            seed = (int) (random.random() * 1_000_000_000)
+        print(f"Using seed {seed} to generate the map.")
+        random.seed(seed)
         # generates and sets the 2D grid with agent and victims, currently with preset values.
         self.ground_truth.traversability.matrix, rooms, tunnels = _generate_traversability_matrix(self.width, self.height, 
                                                                                         config.num_rooms, config.unconnected_probability, 
