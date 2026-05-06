@@ -64,14 +64,14 @@ class MpcAgent(Agent):
         Returns:
         The objective value
         """
-        w_vicitm, w_exploration, w_safety, w_confidence = 4, 10, 1, 2 # To be adjusted
+        # TODO: Normalize all scores (maybe in methods?)
+        w_exploration, w_safety, w_confidence = 10, 1, 2 # To be adjusted
 
-        victim_term =  w_vicitm * self._victim_score(model)
         exploration =  w_exploration * self._exploration_score(model)
         safety      = -w_safety * self._safety_penalty(model)
         confidence  =  w_confidence * self._confidence_score(model)
 
-        return victim_term + exploration + safety + confidence
+        return exploration + safety + confidence
 
     def _predict_next_model(self, model: Model, action: AgentAction) -> Model:
         """
@@ -109,7 +109,7 @@ class MpcAgent(Agent):
         # ? What approach?
         # ? Expected value (0.7 * FLAMMABLE + 0.3 * BURNING)? idk how we'd store this
         # ? Worst-case (Predict that anything flammable will ignite, spread flammability)? <- TMPC is the one that should be overly cautious
-        # ? Probabilistically (Randomly ignite, but agent doesnt know spread_rate), optimizer would no longer be deterministic?
+        # * Probabilistically (Randomly ignite, but agent doesnt know spread_rate)
         # ? Best-case/naïve (Predict that fire won't spread)? <- Kinda seems like what Anahita is expecting
         
         self._mock_scan(new_model)
@@ -176,21 +176,6 @@ class MpcAgent(Agent):
         
         return x, y # Wait action
     
-    def _victim_score(self, model: Model) -> float:
-        """
-        Calculates a score of a model in regards to the number of victims found.
-
-        Parameters:
-        model: The model to calculate the score for
-
-        Returns:
-        The score
-        """
-        # ? A predicted state should never have found more victims
-        # ? so this should be equal for all predicted states;
-        # ? is there a point in having this?
-        return np.sum(model.state.victims.matrix) 
-    
     def _exploration_score(self, model: Model) -> float:
         """
         Calculates a score of a model in regards to how much area is explored.
@@ -208,6 +193,7 @@ class MpcAgent(Agent):
         if len(unexplored) == 0:
             return explored
         
+        # Heading towards unexplored tiles is more important
         distances = np.linalg.norm(unexplored - np.array([model.agent_y, model.agent_x]), axis=1)
         min_distance = np.min(distances)
         proximity_bonus = 1.0 / (1.0 + min_distance)
