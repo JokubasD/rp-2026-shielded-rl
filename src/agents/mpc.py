@@ -1,9 +1,10 @@
 import itertools
 import numpy as np
+from copy import deepcopy
 
 from src.agent import Agent, AgentAction
 from src.state import State
-from copy import deepcopy
+from src.constants import FireLevel
 
 class Model:
     # Models are needed for predicted theoretical states keep track of the agent's position
@@ -44,7 +45,7 @@ class MpcAgent(Agent):
                     feasible = False
                     break
 
-                model = self._predict_next_state(model, action)
+                model = self._predict_next_model(model, action)
                 total_objective += (self.gamma ** step) * self._objective(model)
             
             if feasible and total_objective > best_objective:
@@ -72,9 +73,9 @@ class MpcAgent(Agent):
 
         return victim_term + exploration + safety + confidence
 
-    def _predict_next_state(self, model: Model, action: AgentAction) -> Model:
+    def _predict_next_model(self, model: Model, action: AgentAction) -> Model:
         """
-        Predicts what the next state will look like if the agent performs the given action.
+        Creates a predicted model of the world if the agent performs the given action.
         This assumes the action is feasible (see self._is_feasible)
 
         Parameters:
@@ -111,9 +112,26 @@ class MpcAgent(Agent):
         # ? Probabilistically (Randomly ignite, but agent doesnt know spread_rate), optimizer would no longer be deterministic?
         # ? Best-case/naïve (Predict that fire won't spread)? <- Kinda seems like what Anahita is expecting
         
-        # TODO: Mock scanning (updating confidences, tiles explored), currently scanning would scan from the old position; might not be necessary
+        self._mock_scan(new_model)
 
         return new_model
+
+    def _mock_scan(self, model: Model) -> None:
+        """
+        Mocks a scan by updating the model's confidence values in place.
+
+        Parameters:
+        model: The model to update
+        """
+        # TODO: Scan from the model position
+        # TODO: Add LoS check to if tile is scanned
+        # TODO: Update Jacob's metric?
+        for i in range(self.world_height):
+            for j in range(self.world_width):
+                if self._tile_scanned(i, j): # Must be changed to scan from the model position
+                    model.state.confidence[i][j] = max(model.state.confidence[i][j] - self.sigma, self.scan_accuracy)
+                else:
+                    self.perception.confidence[i][j] = max(self.perception.confidence[i][j] - self.sigma, 0)
 
     def _is_feasible(self, model: Model, action: AgentAction) -> bool:
         """
@@ -184,7 +202,55 @@ class MpcAgent(Agent):
         Returns:
         The score
         """
+        # Should be updated; confidence == 0 does not mean unexplored; use Jacobs metric later
         explored = np.count_nonzero(model.state.confidence.matrix)
-        return explored
-        # Find agent position in this predicted state
+        unexplored = np.argwhere(model.state.confidence.matrix == 0)
+    
+        if len(unexplored) == 0:
+            return explored
         
+        distances = np.linalg.norm(unexplored - np.array([model.agent_y, model.agent_x]), axis=1)
+        min_distance = np.min(distances)
+        proximity_bonus = 1.0 / (1.0 + min_distance)
+        
+        return explored + proximity_bonus
+
+    def _safety_penalty(self, model: Model) -> float:
+        """
+        Calculates a score of a model in regards to how unsafe the agent is
+
+        Parameters:
+        model: The model to calculate the score for
+
+        Returns:
+        The score
+        """
+        # Penalty for being on vulnerable tile
+        vulnerability_penalty = model.state.vulnerability[model.agent_y][model.agent_x]
+
+        # Penalty for being near fire
+        fire_penalty = 0.0
+        for row in range(self.world_height):
+            dy = row - model.agent_y
+            for col in range(self.world_width):
+                fire_level: FireLevel = model.state.fire[row][col]
+                if fire_level == FireLevel.SAFE or fire_level == FireLevel.BURNT:
+                    continue
+                dx = col - model.agent_x
+                distance = dy ** 2 + dx ** 2
+                danger = (int(fire_level) ** 2) # Burning is much more dangerous than flammable
+                fire_penalty += danger / distance
+
+        return vulnerability_penalty + fire_penalty
+        
+    def _confidence_score(self, model: Model) -> float:
+        """
+        Calculates a score of a model in regards to how confident the agent is
+
+        Parameters:
+        model: The model to calculate the score for
+
+        Returns:
+        The score
+        """
+        return np.sum(model.state.confidence.matrix)
