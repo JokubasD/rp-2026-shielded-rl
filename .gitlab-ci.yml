@@ -1,0 +1,23 @@
+image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+
+variables:
+  UV_CACHE_DIR: .uv-cache
+
+cache:
+  key:
+    files:
+      - uv.lock
+  paths:
+    - $UV_CACHE_DIR
+
+stages:
+  - test
+
+test_job:
+  stage: test
+  script:
+    - uv sync --frozen
+    - uv run python -m unittest discover
+
+  after_script:
+    - uv cache prune --ci
