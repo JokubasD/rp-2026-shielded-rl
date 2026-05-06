@@ -10,6 +10,7 @@ from numpy.typing import NDArray
 from tcod.map import compute_fov
 from tcod.libtcodpy import FOV_RESTRICTIVE
 
+# Threshold for what value of traversability causes a tile to become 'opaque' to the LoS check
 LOS_THRESHOLD = 1
 
 @dataclass
