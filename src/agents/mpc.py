@@ -6,6 +6,7 @@ from src.state import State
 from copy import deepcopy
 
 class Model:
+    # Models are needed for predicted theoretical states keep track of the agent's position
     def __init__(self, state: State, x: int, y: int):
         self.state = state
         self.agent_x = x
