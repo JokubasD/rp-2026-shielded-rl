@@ -259,14 +259,21 @@ class Simulator:
 
     def _apply_vulnerability_damage(self) -> None:
         """
-        Roll for damage on each agent based on the vulnerability of the cell they currently occupy.
-        SAFE cells (0.0) never trigger damage; HIGH_RISK cells (1.0) always do.
+        Damage on each agent based on the vulnerability of the cell they currently occupy.
         """
         for agent in self.agents:
             vulnerability = float(self.ground_truth.vulnerability[agent.y][agent.x])
             self.metrics.record_vulnerable_collision(agent, vulnerability)
 
     def generate_ground_truth(self, config: MapConfig | None = None, seed: int | None = None) -> None:
+        """
+        Generates the ground truth state of the world, including the traversability, vulnerability, 
+        agent positions, and victim positions.
+        Parameters:
+        config: The configuration for the map generation, including parameters like number of rooms, room sizes, vulnerability probabilities, etc. If None, default parameters will be used.
+        seed: The seed for the random number generator to ensure reproducibility. If None, a random seed will be generated and printed. 
+
+        """
         if config is None:
             config = MapConfig()
         if seed is None:
