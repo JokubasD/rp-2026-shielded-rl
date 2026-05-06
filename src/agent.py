@@ -1,5 +1,6 @@
 from .state import State
 from .constants import AgentAction
+import numpy as np
 
 from dataclasses import dataclass
 
@@ -43,6 +44,8 @@ class Agent:
 
         self.illegal_moves = 0
 
+        self.explored: np.ndarray = np.zeros((height, width), dtype=bool) # Cells the agent has ever scanned
+
     def scan(self, state: State) -> Scan:
         """
         Retrieves information from the state passed in (with some noise/uncertainties?)
@@ -60,41 +63,12 @@ class Agent:
         self.perception.fire[visible] = fire = state.fire[visible]
         self.perception.confidence.matrix = np.maximum(self.perception.confidence.matrix - self.decay, confidence_bounds)
 
+        self.explored[visible] = True
+
         ys, xs = np.nonzero(visible)
         conf = self.perception.confidence.matrix[visible]
 
         return Scan(xs, ys, trvs, vuln, vict, agnt, fire, conf)
-
-    def move(self, direction: AgentAction) -> None:
-        """
-        Updates an agent's internal position based on an action
-
-        Parameters:
-        direction: The action to perform
-        """
-
-        target_x, target_y = self.x, self.y
-
-        match direction:
-            case AgentAction.MOVE_UP:
-                target_y -= 1
-            case AgentAction.MOVE_DOWN:
-                target_y += 1
-            case AgentAction.MOVE_LEFT:
-                target_x -= 1
-            case AgentAction.MOVE_RIGHT:
-                target_x += 1
-            case _:
-                return
-
-        if not (0 <= target_x < self.world_width and 0 <= target_y < self.world_height):
-            self.illegal_moves += 1
-            return
-
-        self.perception.agents[self.y][self.x] = 0
-        self.x, self.y = target_x, target_y
-        self.move_history.append((self.x, self.y))
-        self.perception.agents[self.y][self.x] = 1
 
     def move_to(self, x: int, y: int) -> None:
         """
