@@ -7,7 +7,7 @@ import matplotlib.colors as mcolors
 
 from .grid import Grid
 from .state import State
-from .agent import *
+from .agent import Agent
 from .fire_manager import FireManager
 from .constants import *
 from .metric import Metric
@@ -18,7 +18,7 @@ class Simulator:
         self.height = height
         self.agents: list[Agent] = []
         self.ground_truth = State(width, height)
-        self.fire_manager: FireManager = FireManager(width, height, 0.0, 0.0) #? Start with a non-spreading fire manager, wondering if it is the right way
+        self.fire_manager: FireManager = FireManager(width, height, 0.0, 0) #? Start with a non-spreading fire manager, wondering if it is the right way
         self.metrics = Metric()
 
     def add_agent(self, agent: Agent) -> None:
