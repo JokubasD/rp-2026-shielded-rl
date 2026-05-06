@@ -68,6 +68,10 @@ class Visualizer:
         
         self.screen = pygame.display.set_mode((self.grid_w + self.sidebar_w, self.grid_h + self.bottom_h))
         
+        # pre-rendered wall layer for performance
+        self.wall_layer = pygame.Surface((self.grid_w, self.grid_h), pygame.SRCALPHA)
+        self.pre_draw_walls()
+
         # Adaptive ui layout math
         self.sidebar_x = self.grid_w + 10
         padding = 15
@@ -144,6 +148,13 @@ class Visualizer:
         self.conf_base_surf = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
         self.conf_base_surf.fill((250, 180, 0))
 
+        self.conf_surfaces = []
+        for i in range(11): 
+            surf = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
+            alpha = int((i / 10.0) * 170)
+            surf.fill((250, 180, 0, alpha))
+            self.conf_surfaces.append(surf)
+
     def generate_static_background(self):
         """ makes grid, sidebar, and footer into one static image"""
         self.full_bg = pygame.Surface((self.grid_w + self.sidebar_w, self.grid_h + self.bottom_h))
@@ -168,13 +179,21 @@ class Visualizer:
         self.screen.blit(header_surf, (x + 10, y + 10))
         pygame.draw.line(self.screen, COLORS["panel_border"], (x + 10, y + 28), (x + w - 10, y + 28))
    
-    def draw_beveled_wall(self, x, y):
+    def pre_draw_walls(self):
+            self.wall_layer.fill((0, 0, 0, 0))
+            initial_state = self.all_histories[0][0] 
+            for y in range(self.rows):
+                for x in range(self.cols):
+                    if initial_state.traversability.matrix[y][x] == TraversabilityLevel.UNTRAVERSIBLE:
+                        self.draw_beveled_wall(self.wall_layer, x, y)
+
+    def draw_beveled_wall(self, surface, x, y):
         rect = pygame.Rect(x * self.cell_size, y * self.cell_size, self.cell_size, self.cell_size)
-        pygame.draw.rect(self.screen, COLORS["wall_base"], rect)
-        pygame.draw.line(self.screen, COLORS["wall_highlight"], rect.topleft, rect.topright, 2)
-        pygame.draw.line(self.screen, COLORS["wall_highlight"], rect.topleft, rect.bottomleft, 2)
-        pygame.draw.line(self.screen, COLORS["wall_shadow"], rect.bottomleft, rect.bottomright, 2)
-        pygame.draw.line(self.screen, COLORS["wall_shadow"], rect.topright, rect.bottomright, 2)
+        pygame.draw.rect(surface, COLORS["wall_base"], rect)
+        pygame.draw.line(surface, COLORS["wall_highlight"], rect.topleft, rect.topright, 2)
+        pygame.draw.line(surface, COLORS["wall_highlight"], rect.topleft, rect.bottomleft, 2)
+        pygame.draw.line(surface, COLORS["wall_shadow"], rect.bottomleft, rect.bottomright, 2)
+        pygame.draw.line(surface, COLORS["wall_shadow"], rect.topright, rect.bottomright, 2)
 
     def draw_perspective_selector(self):
         """Draws buttons to switch between Ground Truth and Agents"""
@@ -216,6 +235,10 @@ class Visualizer:
         show_conf = self.checkboxes[3].active
         show_fire = self.checkboxes[4].active
 
+        # show traversability as a separate layer for performance
+        if show_trav and self.selected_history_index == 0:
+            self.screen.blit(self.wall_layer, (0, 0))
+        
         # Single pass rendering loop
         for y in range(self.rows):
             for x in range(self.cols):
@@ -223,11 +246,11 @@ class Visualizer:
                 px = x * self.cell_size
                 py = y * self.cell_size
 
-                # Traversability
-                if show_trav and state.traversability.matrix[y][x] == TraversabilityLevel.UNTRAVERSIBLE:
-                    self.draw_beveled_wall(x, y)
-
-                # Fire (Using pre-rendered surfaces)
+                if show_trav and self.selected_history_index != 0:
+                    if state.traversability.matrix[y][x] == TraversabilityLevel.UNTRAVERSIBLE:
+                        self.draw_beveled_wall(self.screen, x, y)
+                
+                # Fire
                 if show_fire:
                     fire_level = state.fire.matrix[y][x]
                     if fire_level == FireLevel.BURNING:
@@ -237,13 +260,12 @@ class Visualizer:
                     elif fire_level == FireLevel.BURNT:
                         self.screen.blit(self.fire_burnt_surf, (px, py))
 
-                # Confidence (Changing alpha of pre-rendered surface)
+                # Confidence
                 if show_conf:
                     conf_val = state.confidence.matrix[y][x]
                     if conf_val > 0:
-                        alpha = int(conf_val * 170)
-                        self.conf_base_surf.set_alpha(alpha) # Ultra-fast alpha adjustment
-                        self.screen.blit(self.conf_base_surf, (px, py))
+                        conf_idx = min(10, max(1, int(conf_val * 10)))  # Map confidence to 0-10
+                        self.screen.blit(self.conf_surfaces[conf_idx], (px, py))
 
                 # Victims
                 if show_vict and state.victims.matrix[y][x] == VictimPresence.PRESENT:
