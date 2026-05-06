@@ -3,3 +3,5 @@ __pycache__
 pyproject.toml
 pytest.ini
 uv.lock
+.venv/
+.DS_Store
