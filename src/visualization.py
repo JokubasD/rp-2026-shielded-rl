@@ -1,6 +1,8 @@
 import pygame
 import sys
 
+from .constants import *
+
 COLORS = {
     "wall_base": (45, 55, 65), 
     "wall_highlight": (70, 85, 95), 
@@ -12,7 +14,10 @@ COLORS = {
     "panel_border": (60, 70, 85),
     "text": (210, 220, 230),      
     "accent": (40, 150, 255),     
-    "danger": (255, 80, 80),   
+    "danger": (255, 80, 80),
+    "burning": (255, 100, 0),
+    "flammable": (255, 200, 0),
+    "burnt": (80, 80, 80),
 }
 
 class Checkbox:
@@ -83,6 +88,7 @@ class Visualizer:
             Checkbox(self.grid_w + 20, 80, "Victims", True),
             Checkbox(self.grid_w + 20, 110, "Agents", True),
             Checkbox(self.grid_w + 20, 140, "Confidence Map", False),
+            Checkbox(self.grid_w + 20, 170, "Fire", True),
         ]
         self.layers_panel_h = (len(self.checkboxes) * row_h) + header_h
 
@@ -191,14 +197,14 @@ class Visualizer:
         if self.checkboxes[0].active:
             for y in range(self.rows):
                 for x in range(self.cols):
-                    if state.traversability.matrix[y][x] == 1:
+                    if state.traversability.matrix[y][x] == TraversabilityLevel.UNTRAVERSIBLE:
                         self.draw_beveled_wall(x, y)
 
         # victims
         if self.checkboxes[1].active:
             for y in range(self.rows):
                 for x in range(self.cols):
-                    if state.victims.matrix[y][x] == 1:
+                    if state.victims.matrix[y][x] == VictimPresence.PRESENT:
                         if self.use_sprites:
                             self.screen.blit(self.victim_sprite, (x * self.cell_size, y * self.cell_size))
                         else:
@@ -208,7 +214,7 @@ class Visualizer:
         if self.checkboxes[2].active:
             for y in range(self.rows):
                 for x in range(self.cols):
-                    if state.agents.matrix[y][x] == 1:
+                    if state.agents.matrix[y][x] == AgentPresence.PRESENT:
                         if self.use_sprites:
                             self.screen.blit(self.agent_sprite, (x * self.cell_size, y * self.cell_size))
                         else:
@@ -230,6 +236,27 @@ class Visualizer:
                         pygame.draw.rect(conf_tile, color, conf_tile.get_rect())
                         self.screen.blit(conf_tile, (x * self.cell_size, y * self.cell_size))
 
+        # fire
+        if self.checkboxes[4].active:
+            for y in range(self.rows):
+                for x in range(self.cols):
+                    fire_level = state.fire.matrix[y][x]
+                    if fire_level == FireLevel.BURNING:
+                        fire_tile = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
+                        fire_tile.fill((0, 0, 0, 0))
+                        pygame.draw.rect(fire_tile, COLORS["burning"] + (180,), (0, 0, self.cell_size, self.cell_size))
+                        self.screen.blit(fire_tile, (x * self.cell_size, y * self.cell_size))
+                    elif fire_level == FireLevel.FLAMMABLE:
+                        fire_tile = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
+                        fire_tile.fill((0, 0, 0, 0))
+                        pygame.draw.rect(fire_tile, COLORS["flammable"] + (180,), (0, 0, self.cell_size, self.cell_size))
+                        self.screen.blit(fire_tile, (x * self.cell_size, y * self.cell_size))
+                    elif fire_level == FireLevel.BURNT:
+                        fire_tile = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
+                        fire_tile.fill((0, 0, 0, 0))
+                        pygame.draw.rect(fire_tile, COLORS["burnt"] + (180,), (0, 0, self.cell_size, self.cell_size))
+                        self.screen.blit(fire_tile, (x * self.cell_size, y * self.cell_size))
+        
         # 3. SIDEBAR PANELS
         self.draw_perspective_selector()
 
