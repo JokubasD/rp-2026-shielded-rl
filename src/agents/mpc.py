@@ -54,7 +54,7 @@ class MpcAgent(Agent):
         Returns:
         The objective value
         """
-        w_exploration, w_safety, w_confidence = 10, 1, 2 # To be adjusted
+        w_exploration, w_safety, w_confidence = 1000, 1, 2 # To be adjusted
 
         exploration =  w_exploration * self._exploration_score()
         safety      = -w_safety * self._safety_penalty()
@@ -119,7 +119,7 @@ class MpcAgent(Agent):
                     for dx, dy in directions:
                         nx, ny = x + dx, y + dy
                         
-                        if not (0 <= nx < self.width and 0 <= ny < self.height):
+                        if not (0 <= nx < self.world_width and 0 <= ny < self.world_height):
                             continue
                         if self.perception.traversability[ny, nx] == TraversabilityLevel.UNTRAVERSIBLE:
                             continue
