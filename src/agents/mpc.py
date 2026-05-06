@@ -1,10 +1,11 @@
 import itertools
 import numpy as np
+import random
 from copy import deepcopy
 
 from src.agent import Agent, AgentAction
 from src.state import State
-from src.constants import FireLevel
+from src.constants import FireLevel, TraversabilityLevel
 
 class Model:
     # Models are needed for predicted theoretical states keep track of the agent's position
@@ -105,16 +106,38 @@ class MpcAgent(Agent):
                 new_model.state.agents[self.y][self.x] = 0
                 new_model.agent_x += 1
 
-        # TODO: Spread fire.
-        # ? What approach?
-        # ? Expected value (0.7 * FLAMMABLE + 0.3 * BURNING)? idk how we'd store this
-        # ? Worst-case (Predict that anything flammable will ignite, spread flammability)? <- TMPC is the one that should be overly cautious
-        # * Probabilistically (Randomly ignite, but agent doesnt know spread_rate)
-        # ? Best-case/naïve (Predict that fire won't spread)? <- Kinda seems like what Anahita is expecting
-        
+        self._predict_fire_spread(new_model)        
         self._mock_scan(new_model)
 
         return new_model
+
+    def _predict_fire_spread(self, model: Model) -> None:
+        """
+        Predicts the spread of fire, updates model in place.
+        Does so probabilistically (where random.random() should be seeded), and with an educated guess on spread rate
+
+        Parameters:
+        model: The model to predict the spread for
+        """
+        # Probabilistically (Randomly (seeded) ignite, educated guess on spread rate)
+        predicted_spread_rate = 0.3
+
+        for y in range(self.world_height):
+            for x in range(self.world_width):
+                if model.state.fire[y][x] == FireLevel.FLAMMABLE and random.random() < predicted_spread_rate:
+                    model.state.fire[y][x] = FireLevel.BURNING
+                    
+                    directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+                    for dx, dy in directions:
+                        nx, ny = x + dx, y + dy
+                        
+                        if not (0 <= nx < self.width and 0 <= ny < self.height):
+                            continue
+                        if model.state.traversability[ny, nx] == TraversabilityLevel.UNTRAVERSIBLE:
+                            continue
+
+                        if model.state.fire[ny, nx] == FireLevel.SAFE:
+                            model.state.fire[ny, nx] = FireLevel.FLAMMABLE
 
     def _mock_scan(self, model: Model) -> None:
         """
