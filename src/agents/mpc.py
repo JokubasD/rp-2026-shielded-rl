@@ -9,12 +9,11 @@ from src.constants import FireLevel, TraversabilityLevel
 
 class MpcAgent(Agent):
     def __init__(self, name: str, x: int, y: int, width: int, height: int, 
-                 decay: float, scan_accuracy: float, scan_radius: int):
-        super().__init__(name, x, y, width, height, decay, scan_accuracy, scan_radius)
+                 decay: float, scan_accuracy: float, scan_radius: int, scan_falloff: bool):
+        super().__init__(name, x, y, width, height, decay, scan_accuracy, scan_radius, scan_falloff)
         
         # How many steps ahead to simulate.
-        # The number of deep-copies of the perception state made when calculating the action to take
-        # will be 5^horizon
+        # The number of deep-copies of the agent made when calculating the action to take will be 5^horizon
         self.horizon = 3 
         self.gamma = 0.9 # Discount factor, nearer moves are more important than later moves
 
@@ -182,14 +181,14 @@ class MpcAgent(Agent):
         unexplored = np.argwhere(self.explored == False)
     
         if len(unexplored) == 0:
-            return explored
+            return explored / (self.world_height * self.world_width)
         
         # Heading towards unexplored tiles is more important
         distances = np.linalg.norm(unexplored - np.array([self.y, self.x]), axis=1)
         min_distance = np.min(distances)
         proximity_bonus = 1.0 / (1.0 + min_distance)
-        
-        return (explored + proximity_bonus) / (self.world_height * self.world_width)
+
+        return (explored + proximity_bonus) / (self.world_height * self.world_width + 1)
 
     def _safety_penalty(self) -> float:
         """
@@ -215,4 +214,4 @@ class MpcAgent(Agent):
         Returns:
         The score
         """
-        return np.sum(self.perception.confidence.matrix) / (self.world_height * self.world_width)
+        return np.sum(self.perception.confidence.matrix) / (self.world_height * self.world_width * self.scan_accuracy)
