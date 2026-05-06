@@ -16,6 +16,10 @@ def main():
     print("Running Simulation steps...")
     history = sim.run(10) 
 
+    visualize_grid_gen(sim.ground_truth.traversability, sim.ground_truth.agents, 
+                       sim.ground_truth.victims, sim.ground_truth.vulnerability,
+                       sim.ground_truth.fire)
+
     print("Launching Visualizer...")
     viz = Visualizer(history, cell_size=25)
     viz.run()
