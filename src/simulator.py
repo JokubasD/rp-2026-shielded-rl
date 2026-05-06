@@ -81,6 +81,7 @@ class Simulator:
 
         for _ in range(steps):
             # Record steps
+            print("Step", _, "=========================")
             step_result = self.step()
             for i in range(len(step_result)):
                 record[i].append(step_result[i])

@@ -64,7 +64,7 @@ class MpcAgent(Agent):
         Returns:
         The objective value
         """
-        w_vicitm, w_exploration, w_safety, w_confidence = 1, 1, 1, 1 # To be adjusted
+        w_vicitm, w_exploration, w_safety, w_confidence = 4, 10, 1, 2 # To be adjusted
 
         victim_term =  w_vicitm * self._victim_score(model)
         exploration =  w_exploration * self._exploration_score(model)
@@ -123,15 +123,14 @@ class MpcAgent(Agent):
         Parameters:
         model: The model to update
         """
-        # TODO: Scan from the model position
         # TODO: Add LoS check to if tile is scanned
         # TODO: Update Jacob's metric?
         for i in range(self.world_height):
             for j in range(self.world_width):
-                if self._tile_scanned(i, j): # Must be changed to scan from the model position
+                if abs(i - model.agent_y) ** 2 + abs(j - model.agent_x) ** 2 <= self.scan_radius ** 2:
                     model.state.confidence[i][j] = max(model.state.confidence[i][j] - self.sigma, self.scan_accuracy)
                 else:
-                    self.perception.confidence[i][j] = max(self.perception.confidence[i][j] - self.sigma, 0)
+                    model.state.confidence[i][j] = max(model.state.confidence[i][j] - self.sigma, 0)
 
     def _is_feasible(self, model: Model, action: AgentAction) -> bool:
         """
