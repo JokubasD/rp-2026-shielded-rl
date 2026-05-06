@@ -1,7 +1,10 @@
-image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-
 variables:
+  UV_VERSION: "0.11.10"
+  PYTHON_VERSION: "3.12"
+  BASE_LAYER: alpine
   UV_CACHE_DIR: .uv-cache
+
+image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
 
 cache:
   key:
