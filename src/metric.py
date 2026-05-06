@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+import numpy as np
+
 from .agent import Agent
 from .constants import RunOutcome
 
@@ -63,6 +65,11 @@ class Metric:
     def record_inter_agent_collision(self, agent: Agent) -> None:
         self.inter_agent_collisions[agent] += 1
         self.damage[agent] += 1
+
+    def record_vulnerable_collision(self, agent: Agent, vulnerable: float) -> None:
+        rnd = np.random.random()
+        if (rnd < vulnerable):
+            self.damage[agent] += 1
 
     def record_wait(self, agent: Agent) -> None:
         self.wait_actions[agent] += 1

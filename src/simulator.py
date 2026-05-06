@@ -48,6 +48,7 @@ class Simulator:
         intents = self._collect_intents()
         self._resolve_agent_conflicts(intents)
         self._commit_moves(intents)
+        self._apply_vulnerability_damage()
 
         for agent in self.agents:
             agent.scan(self.ground_truth)
@@ -55,7 +56,7 @@ class Simulator:
         # Perform environment actions (firespread, etc.)
         self.fire_manager.spread_fire(self.ground_truth)
         self.metrics.steps_taken += 1
-        self._update_found_metrics()
+        self._update_victim_metrics()
         self._update_area_explored()
         self.metrics.record_snapshot()
 
@@ -218,7 +219,7 @@ class Simulator:
             self.ground_truth.agents[ty][tx] = 1
             agent.move_to(tx, ty)
 
-    def _update_found_metrics(self) -> None:
+    def _update_victim_metrics(self) -> None:
         """
         Update the found metrics based on the current ground truth state.
         """
@@ -256,9 +257,22 @@ class Simulator:
             explored = int(agent.explored[traversable].sum())
             self.metrics.area_explored[agent] = explored / total
 
-    def generate_ground_truth(self, config: MapConfig | None = None) -> None:
+    def _apply_vulnerability_damage(self) -> None:
+        """
+        Roll for damage on each agent based on the vulnerability of the cell they currently occupy.
+        SAFE cells (0.0) never trigger damage; HIGH_RISK cells (1.0) always do.
+        """
+        for agent in self.agents:
+            vulnerability = float(self.ground_truth.vulnerability[agent.y][agent.x])
+            self.metrics.record_vulnerable_collision(agent, vulnerability)
+
+    def generate_ground_truth(self, config: MapConfig | None = None, seed: int | None = None) -> None:
         if config is None:
             config = MapConfig()
+        if seed is None:
+            seed = (int) (random.random() * 1_000_000_000)
+        print(f"Using seed {seed} to generate the map.")
+        random.seed(seed)
         # generates and sets the 2D grid with agent and victims, currently with preset values.
         self.ground_truth.traversability.matrix, rooms, tunnels = _generate_traversability_matrix(self.width, self.height, 
                                                                                         config.num_rooms, config.unconnected_probability, 
