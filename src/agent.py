@@ -1,5 +1,6 @@
 from .state import State
 from .constants import AgentAction
+import numpy as np
 
 class Agent:
     def __init__(self, name: str, x: int, y: int, width: int, height: int, 
@@ -20,6 +21,8 @@ class Agent:
 
         self.illegal_moves = 0
 
+        self.explored: np.ndarray = np.zeros((height, width), dtype=bool) # Cells the agent has ever scanned
+
     def scan(self, state: State) -> None:
         """
         Retrieves information from the state passed in (with some noise/uncertainties?)
@@ -30,6 +33,7 @@ class Agent:
         for i in range(self.world_height):
             for j in range(self.world_width):
                 if self._tile_scanned(i, j):
+                    self.explored[i][j] = True
                     self.perception.confidence[i][j] = max(self.perception.confidence[i][j] - self.sigma, self.scan_accuracy)
                     self.perception.traversability[i][j] = state.traversability[i][j]
                     self.perception.victims[i][j] = state.victims[i][j]
