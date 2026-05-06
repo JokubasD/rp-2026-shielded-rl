@@ -62,7 +62,6 @@ class MpcAgent(Agent):
         Returns:
         The objective value
         """
-        # TODO: Normalize all scores (maybe in methods?)
         w_exploration, w_safety, w_confidence = 10, 1, 2 # To be adjusted
 
         exploration =  w_exploration * self._exploration_score()
@@ -186,9 +185,8 @@ class MpcAgent(Agent):
         Returns:
         The score
         """
-        # Should be updated; confidence == 0 does not mean unexplored; use Jacobs metric later
-        explored = np.count_nonzero(self.perception.confidence.matrix)
-        unexplored = np.argwhere(self.perception.confidence.matrix == 0)
+        explored = np.count_nonzero(self.explored)
+        unexplored = np.argwhere(self.explored == False)
     
         if len(unexplored) == 0:
             return explored
@@ -198,7 +196,7 @@ class MpcAgent(Agent):
         min_distance = np.min(distances)
         proximity_bonus = 1.0 / (1.0 + min_distance)
         
-        return explored + proximity_bonus
+        return (explored + proximity_bonus) / (self.world_height * self.world_width)
 
     def _safety_penalty(self) -> float:
         """
@@ -209,21 +207,13 @@ class MpcAgent(Agent):
         """
         # Penalty for being on vulnerable tile
         vulnerability_penalty = self.perception.vulnerability[self.y][self.x]
+        fire_penalty = (
+            2 if self.perception.fire[self.y][self.x] == FireLevel.BURNING else 
+            1 if self.perception.fire[self.y][self.x] == FireLevel.FLAMMABLE else 
+            0
+        )
 
-        # Penalty for being near fire
-        fire_penalty = 0.0
-        for row in range(self.world_height):
-            dy = row - self.y
-            for col in range(self.world_width):
-                fire_level: FireLevel = self.perception.fire[row][col]
-                if fire_level == FireLevel.SAFE or fire_level == FireLevel.BURNT:
-                    continue
-                dx = col - self.x
-                distance = dy ** 2 + dx ** 2
-                danger = (int(fire_level) ** 2) # Burning is much more dangerous than flammable
-                fire_penalty += danger / distance
-
-        return vulnerability_penalty + fire_penalty
+        return (vulnerability_penalty + fire_penalty) / 3
         
     def _confidence_score(self) -> float:
         """
@@ -232,4 +222,4 @@ class MpcAgent(Agent):
         Returns:
         The score
         """
-        return np.sum(self.perception.confidence.matrix)
+        return np.sum(self.perception.confidence.matrix) / (self.world_height * self.world_width)
