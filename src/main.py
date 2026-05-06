@@ -3,7 +3,7 @@ from .agent import Agent
 from .visualization import Visualizer
 
 WIDTH = 40
-HEIGHT = 25
+HEIGHT = 40
 
 def main():
     sim = Simulator(WIDTH, HEIGHT)
@@ -31,7 +31,7 @@ def main():
     history = sim.run(30) 
 
     print("Launching Visualizer...")
-    viz = Visualizer(history, cell_size=25)
+    viz = Visualizer(history)
     viz.run()
 
 if __name__ == "__main__":
