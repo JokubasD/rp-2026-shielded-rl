@@ -7,13 +7,6 @@ from src.agent import Agent, AgentAction
 from src.state import State
 from src.constants import FireLevel, TraversabilityLevel
 
-class Model:
-    # Models are needed for predicted theoretical states keep track of the agent's position
-    def __init__(self, state: State, x: int, y: int):
-        self.state = state
-        self.agent_x = x
-        self.agent_y = y
-
 class MpcAgent(Agent):
     def __init__(self, name: str, x: int, y: int, width: int, height: int, 
                  decay: float, scan_accuracy: float, scan_radius: int):
