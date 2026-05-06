@@ -1,4 +1,5 @@
 import itertools
+import numpy as np
 
 from src.agent import Agent, AgentAction
 from src.state import State
@@ -82,27 +83,25 @@ class MpcAgent(Agent):
             case AgentAction.MOVE_UP:
                 new_state.agents[self.y - 1][self.x] = 1
                 new_state.agents[self.y][self.x] = 0
-                self.y -= 1
             case AgentAction.MOVE_DOWN:
                 new_state.agents[self.y + 1][self.x] = 1
                 new_state.agents[self.y][self.x] = 0
-                self.y += 1
             case AgentAction.MOVE_LEFT:
                 new_state.agents[self.y][self.x - 1] = 1
                 new_state.agents[self.y][self.x] = 0
-                self.x -= 1
             case AgentAction.MOVE_RIGHT:
                 new_state.agents[self.y][self.x + 1] = 1
                 new_state.agents[self.y][self.x] = 0
-                self.x += 1
 
         # TODO: Spread fire.
-        # ? How?
+        # ? What approach?
         # ? Expected value (0.7 * FLAMMABLE + 0.3 * BURNING)? idk how we'd store this
-        # ? Worst-case (Predict that anything flammable will ignite, spread flammability)?
-        # ? Probabilistically (Randomly ignite (agent doesnt know spread_rate))?
-        # ? Best-case (Predict that fire won't spread)?
+        # ? Worst-case (Predict that anything flammable will ignite, spread flammability)? <- TMPC is the one that should be overly cautious
+        # ? Probabilistically (Randomly ignite, but agent doesnt know spread_rate), optimizer would no longer be deterministic?
+        # ? Best-case/naïve (Predict that fire won't spread)? <- Kinda seems like what Anahita is expecting
         
+        # TODO: Mock scanning (updating confidences, tiles explored), currently scanning would scan from the old position; might not be necessary
+
         return new_state
 
     def _is_feasible(self, state: State, action: AgentAction) -> bool:
@@ -146,3 +145,33 @@ class MpcAgent(Agent):
             case AgentAction.MOVE_RIGHT:
                 tx += 1
         return tx, ty
+    
+    def _victim_score(self, state: State) -> float:
+        """
+        Calculates a score of a theoretical state in regards to the number of victims found.
+
+        Parameters:
+        state: The state to calculate the score for
+
+        Returns:
+        The score
+        """
+        # ? A predicted state should never have more victims
+        # ? so this should be equal for all predicted states;
+        # ? is there a point in having this?
+        return np.sum(state.victims.matrix) 
+    
+    def _exploration_score(self, state: State) -> float:
+        """
+        Calculates a score of a theoretical state in regards to how much area is explored.
+
+        Parameters:
+        state: The state to calculate the score for
+
+        Returns:
+        The score
+        """
+        explored = np.count_nonzero(state.confidence.matrix)
+        return explored
+        # Find agent position in this predicted state
+        
