@@ -64,12 +64,12 @@ class MpcAgent(Agent):
         Returns:
         The objective value
         """
-        w1, w2, w3, w4 = 1, 1, 1, 1 # To be adjusted
+        w_vicitm, w_exploration, w_safety, w_confidence = 1, 1, 1, 1 # To be adjusted
 
-        victim_term =  w1 * self._victim_score(model)
-        exploration =  w2 * self._exploration_score(model)
-        safety      = -w3 * self._safety_penalty(model)
-        confidence  =  w4 * self._confidence_score(model)
+        victim_term =  w_vicitm * self._victim_score(model)
+        exploration =  w_exploration * self._exploration_score(model)
+        safety      = -w_safety * self._safety_penalty(model)
+        confidence  =  w_confidence * self._confidence_score(model)
 
         return victim_term + exploration + safety + confidence
 
@@ -91,19 +91,19 @@ class MpcAgent(Agent):
             case AgentAction.MOVE_UP:
                 new_model.state.agents[self.y - 1][self.x] = 1
                 new_model.state.agents[self.y][self.x] = 0
-                new_model.y -= 1
+                new_model.agent_y -= 1
             case AgentAction.MOVE_DOWN:
                 new_model.state.agents[self.y + 1][self.x] = 1
                 new_model.state.agents[self.y][self.x] = 0
-                new_model.y += 1
+                new_model.agent_y += 1
             case AgentAction.MOVE_LEFT:
                 new_model.state.agents[self.y][self.x - 1] = 1
                 new_model.state.agents[self.y][self.x] = 0
-                new_model.x -= 1
+                new_model.agent_x -= 1
             case AgentAction.MOVE_RIGHT:
                 new_model.state.agents[self.y][self.x + 1] = 1
                 new_model.state.agents[self.y][self.x] = 0
-                new_model.x += 1
+                new_model.agent_x += 1
 
         # TODO: Spread fire.
         # ? What approach?
