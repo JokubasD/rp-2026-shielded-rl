@@ -1,7 +1,7 @@
 variables:
   UV_VERSION: "0.11.10"
   PYTHON_VERSION: "3.12"
-  BASE_LAYER: alpine
+  BASE_LAYER: trixie-slim
   UV_CACHE_DIR: .uv-cache
 
 image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
