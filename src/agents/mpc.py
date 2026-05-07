@@ -180,7 +180,7 @@ class MpcAgent(Agent):
         Calculates a score in regards to how much area is explored.
 
         Returns:
-        The score
+        The score, normalized to [0, 1]
         """
         explored = np.count_nonzero(self.explored)
         unexplored = np.argwhere(self.explored == False)
@@ -200,7 +200,7 @@ class MpcAgent(Agent):
         Calculates a score in regards to how unsafe the agent is
 
         Returns:
-        The score
+        The score, normalized to [0, 1]
         """
         # Penalty for being on vulnerable tile
         vulnerability_penalty = self.perception.vulnerability[self.y][self.x]
@@ -217,6 +217,6 @@ class MpcAgent(Agent):
         Calculates a score in regards to how confident the agent is
 
         Returns:
-        The score
+        The score, normalized to [0, 1]
         """
         return np.sum(self.perception.confidence.matrix) / (self.world_height * self.world_width * self.scan_accuracy)
