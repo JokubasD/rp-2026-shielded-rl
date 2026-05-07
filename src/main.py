@@ -17,9 +17,9 @@ def main():
     # agent1 = Agent("mpc", 0, 1, WIDTH, HEIGHT, 0.05, 0.9, 4, False)
     sim.add_agent(agent1)
 
-    # visualize_grid_gen(sim.ground_truth.traversability, sim.ground_truth.agents, 
-    #                    sim.ground_truth.victims, sim.ground_truth.vulnerability,
-    #                    sim.ground_truth.fire)
+    visualize_grid_gen(sim.ground_truth.traversability, sim.ground_truth.agents, 
+                       sim.ground_truth.victims, sim.ground_truth.vulnerability,
+                       sim.ground_truth.fire)
 
     print("Running Simulation steps...")
     history = sim.run(300) 
