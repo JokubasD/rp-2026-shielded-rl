@@ -146,6 +146,9 @@ class MpcAgent(Agent):
         if (target_cell_x < 0 or target_cell_x >= self.world_width or 
             target_cell_y < 0 or target_cell_y >= self.world_height): # Out of bounds
             return False
+
+        if self.perception.victims[target_cell_y][target_cell_x] == 1: # Hit victim
+            return False
         
         return self.perception.traversability[target_cell_y][target_cell_x] == 0 # Didn't hit wall
 
