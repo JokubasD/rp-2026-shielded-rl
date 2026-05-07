@@ -22,7 +22,7 @@ def main():
     #                    sim.ground_truth.fire)
 
     print("Running Simulation steps...")
-    history = sim.run(100) 
+    history = sim.run(300) 
 
     print("Launching Visualizer...")
     viz = Visualizer(history, cell_size=25)
