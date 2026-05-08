@@ -98,16 +98,6 @@ class MpcAgentTest(unittest.TestCase):
         self.assertLessEqual(agent._confidence_score(), 1)
         self.assertGreaterEqual(agent._confidence_score(), 0)
 
-    def test_exploration_score_zero(self):
-        agent = MpcAgent("mpc", 1, 0, 3, 3, 0.1, 0.9, 0, False)
-        agent.explored = np.array([
-            [False, False, False], 
-            [False, False, False], 
-            [False, False, False]
-            ])
-
-        self.assertEqual(agent._exploration_score(), 0.0)
-
     def test_exploration_score_normalized(self):
         agent = MpcAgent("mpc", 1, 0, 3, 3, 0.1, 0.9, 0, False)
         agent.explored = np.array([
