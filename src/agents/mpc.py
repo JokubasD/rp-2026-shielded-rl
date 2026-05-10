@@ -6,7 +6,6 @@ from typing import Self
 from scipy.ndimage import binary_dilation
 
 from src.agent import Agent, AgentAction
-from src.state import State
 from src.constants import FireLevel, TraversabilityLevel
 
 class MpcAgent(Agent):
@@ -17,13 +16,15 @@ class MpcAgent(Agent):
         # How many steps ahead to simulate.
         # The number of deep-copies of the agent made when calculating the action to take will be 5^horizon
         self.horizon = 3
-        self.gamma = 0.9 # Discount factor, nearer moves are more important than later moves
+        self.discount = 0.9 # Discount factor, nearer moves are more important than later moves
+        self.fire_spread = 0.3
     
     def copy(self) -> Self:
         copy = super().copy()
 
         copy.horizon = self.horizon
-        copy.gamma = self.gamma
+        copy.discount = self.discount
+        copy.fire_spread = self.fire_spread
 
         return copy
 
@@ -46,9 +47,8 @@ class MpcAgent(Agent):
                     continue
 
                 next_state = model_state._predict_next_state(action)
-                next_objective = objective + (self.gamma ** depth * next_state._objective())
+                next_objective = objective + (self.discount ** depth * next_state._objective())
                 
-                # 3. Recurse down this branch
                 future_obj, future_seq = dfs(next_state, depth + 1, next_objective)
                 
                 if future_obj > best_objective:
@@ -120,7 +120,7 @@ class MpcAgent(Agent):
         Does so probabilistically (where random.random() should be seeded), and with an educated guess on spread rate
 
         Returns:
-        A matrix containing <horizon> sequential fire matrices
+        The predicted fire matrix
         """
         # Probabilistically (Randomly (seeded) ignite, educated guess on spread rate)
         predicted_fire = np.copy(self.perception.fire.matrix)
@@ -138,7 +138,7 @@ class MpcAgent(Agent):
 
         return predicted_fire
     
-    def _predict_fire_spread_to_horizon(self, spread_rate: float, horizon: int) -> NDArray:
+    def _predict_fire_spread_horizon(self, spread_rate: float) -> NDArray:
         """
         Predicts the spread of fire over every step until the horizon, since fire spread is atm the same for every branch
         Does so probabilistically (where random.random() should be seeded), and with an educated guess on spread rate
@@ -147,10 +147,10 @@ class MpcAgent(Agent):
         A matrix containing <horizon> sequential fire matrices
         """
         # Probabilistically (Randomly (seeded) ignite, educated guess on spread rate)
-        predictions = np.empty((horizon, self.world_height, self.world_width))
+        predictions = np.empty((self.horizon, self.world_height, self.world_width))
         current_fire = np.copy(self.perception.fire.matrix)
 
-        for i in range(horizon):
+        for i in range(self.horizon):
             random_noise = np.random.rand(self.world_height, self.world_width)
 
             ignited_mask = (current_fire == FireLevel.FLAMMABLE) & (random_noise < spread_rate)

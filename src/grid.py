@@ -15,7 +15,7 @@ class Grid:
     def __delitem__(self, key):
         self.matrix[key] = 0
 
-    def copy(self):
+    def copy(self) -> "Grid":
         copy = Grid.__new__(Grid)
 
         copy.height = self.height
