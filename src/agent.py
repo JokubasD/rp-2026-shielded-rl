@@ -153,7 +153,7 @@ class Agent:
     
     def _tile_accuracy(self) -> NDArray[np.float64]:
         if self.scan_falloff:
-            var = (self. scan_radius * 2 / 3) ** 2
+            var = (self. scan_radius / 3) ** 2
             y, x = np.ogrid[:self.world_height, :self.world_width]
             return self.scan_accuracy * np.exp(-0.5 * ((x - self.x)**2 + (y - self.y)**2) / var)
         else:
