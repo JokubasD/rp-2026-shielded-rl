@@ -17,14 +17,14 @@ class MpcAgent(Agent):
         # The number of deep-copies of the agent made when calculating the action to take will be 5^horizon
         self.horizon = 3
         self.discount = 0.9 # Discount factor, nearer moves are more important than later moves
-        self.fire_spread = 0.3
+        self.fire_spread_rate = 0.3
     
     def copy(self) -> Self:
         copy = super().copy()
 
         copy.horizon = self.horizon
         copy.discount = self.discount
-        copy.fire_spread = self.fire_spread
+        copy.fire_spread_rate = self.fire_spread_rate
 
         return copy
 
@@ -114,7 +114,7 @@ class MpcAgent(Agent):
 
         return new_agent
 
-    def _predict_fire_spread(self, spread_rate: float) -> NDArray:
+    def _predict_fire_spread(self) -> NDArray:
         """
         Predicts the spread of fire.
         Does so probabilistically (where random.random() should be seeded), and with an educated guess on spread rate
@@ -127,7 +127,7 @@ class MpcAgent(Agent):
         
         random_noise = np.random.rand(self.world_height, self.world_width)
 
-        ignited_mask = (predicted_fire == FireLevel.FLAMMABLE) & (random_noise < spread_rate)
+        ignited_mask = (predicted_fire == FireLevel.FLAMMABLE) & (random_noise < self.fire_spread_rate)
         predicted_fire[ignited_mask] = FireLevel.BURNING
 
         adjacent_mask = binary_dilation(ignited_mask)
@@ -138,7 +138,7 @@ class MpcAgent(Agent):
 
         return predicted_fire
     
-    def _predict_fire_spread_horizon(self, spread_rate: float) -> NDArray:
+    def _predict_fire_spread_horizon(self) -> NDArray:
         """
         Predicts the spread of fire over every step until the horizon, since fire spread is atm the same for every branch
         Does so probabilistically (where random.random() should be seeded), and with an educated guess on spread rate
@@ -153,7 +153,7 @@ class MpcAgent(Agent):
         for i in range(self.horizon):
             random_noise = np.random.rand(self.world_height, self.world_width)
 
-            ignited_mask = (current_fire == FireLevel.FLAMMABLE) & (random_noise < spread_rate)
+            ignited_mask = (current_fire == FireLevel.FLAMMABLE) & (random_noise < self.fire_spread_rate)
             current_fire[ignited_mask] = FireLevel.BURNING
 
             adjacent_mask = binary_dilation(ignited_mask)
