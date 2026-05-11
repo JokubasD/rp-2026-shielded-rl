@@ -109,7 +109,7 @@ class MpcAgent(Agent):
                 new_agent.perception.agents[self.y][self.x] = 0
                 new_agent.x += 1
 
-        new_agent.perception.fire.matrix = self._predict_fire_spread(0.3)        
+        new_agent.perception.fire.matrix = self._predict_fire_spread()        
         new_agent.scan(new_agent.perception)
 
         return new_agent
