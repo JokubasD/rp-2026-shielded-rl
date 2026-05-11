@@ -68,7 +68,7 @@ class MpcAgent(Agent):
         Returns:
         The objective value
         """
-        w_exploration, w_safety, w_confidence = 100, 20, 1 # To be adjusted
+        w_exploration, w_safety, w_confidence = 50, 1, 3 # To be adjusted
 
         exploration =  w_exploration * self._exploration_score()
         safety      = -w_safety * self._safety_penalty()
@@ -184,6 +184,9 @@ class MpcAgent(Agent):
 
         if self.perception.victims[target_cell_y][target_cell_x] == 1: # Hit victim
             return False
+
+        if self.perception.fire.matrix[target_cell_y][target_cell_x] == FireLevel.BURNING: # On fire
+            return False
         
         return self.perception.traversability[target_cell_y][target_cell_x] == 0 # Didn't hit wall
     
@@ -215,15 +218,7 @@ class MpcAgent(Agent):
         The score, normalized to [0, 1]
         """
         # Penalty for being on vulnerable tile
-        vulnerability_penalty = self.perception.vulnerability[self.y][self.x]
-        burning_penalty = int(self.perception.fire[self.y][self.x] == FireLevel.BURNING) 
-        flammable_penalty = int(self.perception.fire[self.y][self.x] == FireLevel.FLAMMABLE)
-
-        w_vuln = 1.0
-        w_burn = 50.0
-        w_flam = 0.2
-
-        return (vulnerability_penalty * w_vuln + burning_penalty * w_burn + flammable_penalty * w_flam) / (w_vuln + w_burn + w_flam)
+        return self.perception.vulnerability[self.y][self.x]
         
     def _confidence_score(self) -> float:
         """
