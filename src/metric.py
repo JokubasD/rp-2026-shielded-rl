@@ -1,13 +1,13 @@
 from dataclasses import dataclass
 
-import numpy as np
+import random
 
 from .agent import Agent
 from .constants import RunOutcome
 
 @dataclass(frozen=True)
 class MetricInTime:
-    """copyo f the metric state at a given time step"""
+    """copy of the metric state at a given time step"""
     step: int
     outcome: RunOutcome
     victims_found: int
@@ -67,7 +67,7 @@ class Metric:
         self.damage[agent] += 1
 
     def record_vulnerable_collision(self, agent: Agent, vulnerable: float) -> None:
-        rnd = np.random.random()
+        rnd = random.random()
         if (rnd < vulnerable):
             self.damage[agent] += 1
 

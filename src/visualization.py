@@ -15,6 +15,8 @@ COLORS = {
     "text": (210, 220, 230),      
     "accent": (40, 150, 255),     
     "danger": (255, 80, 80),
+    "vulnerable": (255, 170, 50),
+    "high_risk": (255, 50, 50),
     "burning": (255, 100, 0),
     "flammable": (255, 200, 0),
     "burnt": (80, 80, 80),
@@ -97,8 +99,9 @@ class Visualizer:
             Checkbox(self.grid_w + 20, 50, "Traversability", True),
             Checkbox(self.grid_w + 20, 80, "Victims", True),
             Checkbox(self.grid_w + 20, 110, "Agents", True),
-            Checkbox(self.grid_w + 20, 140, "Confidence Map", False),
+            Checkbox(self.grid_w + 20, 140, "Vulnerability", True),
             Checkbox(self.grid_w + 20, 170, "Fire", True),
+            Checkbox(self.grid_w + 20, 200, "Confidence", False),
         ]
         self.layers_panel_h = (len(self.checkboxes) * row_h) + header_h
 
@@ -151,6 +154,13 @@ class Visualizer:
             alpha = int((i / 10.0) * 170)
             surf.fill((250, 180, 0, alpha))
             self.conf_surfaces.append(surf)
+
+        self.vuln_surfaces = {
+            VulnerabilityLevel.VULNERABLE: pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA),
+            VulnerabilityLevel.HIGH_RISK: pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA),
+        }
+        self.vuln_surfaces[VulnerabilityLevel.VULNERABLE].fill(COLORS["vulnerable"] + (80,))
+        self.vuln_surfaces[VulnerabilityLevel.HIGH_RISK].fill(COLORS["high_risk"] + (80,))
 
     def generate_static_background(self):
         """ makes grid, sidebar, and footer into one static image"""
@@ -229,8 +239,9 @@ class Visualizer:
         show_trav = self.checkboxes[0].active
         show_vict = self.checkboxes[1].active
         show_agnt = self.checkboxes[2].active
-        show_conf = self.checkboxes[3].active
+        show_vuln = self.checkboxes[3].active
         show_fire = self.checkboxes[4].active
+        show_conf = self.checkboxes[5].active
 
         # show traversability as a separate layer for performance
         if show_trav and self.selected_history_index == 0:
@@ -282,6 +293,13 @@ class Visualizer:
                         pad = self.cell_size * 0.15
                         size = max(1, self.cell_size * 0.7)
                         pygame.draw.rect(self.screen, COLORS["accent"], (px + pad, py + pad, size, size))
+
+                # Vulnerability
+                if show_vuln:
+                    vuln_val = state.vulnerability.matrix[y][x]
+                    if vuln_val in self.vuln_surfaces:
+                        self.screen.blit(self.vuln_surfaces[vuln_val], (px, py))
+
         
         # 3. SIDEBAR PANELS
         self.draw_perspective_selector()
