@@ -2,8 +2,8 @@ from .simulator import Simulator, MapConfig, visualize_grid_gen
 from .agent import Agent
 from .visualization import Visualizer
 
-WIDTH = 100
-HEIGHT = 100
+WIDTH = 40
+HEIGHT = 40
 
 def main():
     sim = Simulator(WIDTH, HEIGHT)

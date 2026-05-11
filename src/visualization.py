@@ -145,9 +145,6 @@ class Visualizer:
         self.fire_burnt_surf = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
         self.fire_burnt_surf.fill(COLORS["burnt"] + (180,))
 
-        self.conf_base_surf = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
-        self.conf_base_surf.fill((250, 180, 0))
-
         self.conf_surfaces = []
         for i in range(11): 
             surf = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
