@@ -8,8 +8,26 @@ WIDTH = 40
 HEIGHT = 40
 
 def main():
-    viz = Visualizer.from_file("saved_runs/shared\sim_20260508_153308_134steps.pkl")
+    sim = Simulator(WIDTH, HEIGHT)
+    config = MapConfig(num_rooms=3, num_victims=5, min_room_length=4, min_room_width=4, max_room_length=7, max_room_width=7, max_tunnel_thickness=1)
+    sim.generate_ground_truth(config, 210577037)
+
+    # Saved seeds: 182840517 (181 steps); 
+
+    agent1 = MpcAgent("mpc", 0, 0, WIDTH, HEIGHT, 0.01, 0.9, 3, True)
+    # agent1 = RandAgent("randy", 0, 0, WIDTH, HEIGHT, 0.01, 0.9, 7, False)
+    # agent1 = Agent("mpc", 0, 1, WIDTH, HEIGHT, 0.05, 0.9, 4, False)
+    sim.add_agent(agent1)
+
+    visualize_grid_gen(sim.ground_truth.traversability, sim.ground_truth.agents, 
+                       sim.ground_truth.victims, sim.ground_truth.vulnerability,
+                       sim.ground_truth.fire)
+
+    print("Running Simulation steps...")
+    history = sim.run(700) 
+
     print("Launching Visualizer...")
+    viz = Visualizer(history, 1000, 1000)
     viz.run()
 
 if __name__ == "__main__":
