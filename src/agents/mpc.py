@@ -1,6 +1,8 @@
 import numpy as np
 from numpy.typing import NDArray
 
+from numba import njit
+
 from typing import Self
 
 from scipy.ndimage import binary_dilation
@@ -61,9 +63,9 @@ class MpcAgent(Agent):
 
         return best_sequence[0]
 
-    def _objective(self) -> float:
+    def _objective_stage(self) -> float:
         """
-        Calculates the agents perceived objective value
+        Calculates the agent's predicted stage reward
 
         Returns:
         The objective value
@@ -77,6 +79,17 @@ class MpcAgent(Agent):
         # print("Exploration:", exploration, "Safety:", safety, "Confidence:", confidence)
 
         return exploration + safety + confidence
+    
+    def _objective_terminal(self, frontier_distances) -> float:
+        """
+        Calculates the agent's predicted terminal reward
+
+        Returns:
+        The objective value
+        """
+        
+
+        return min_distance
 
     def _predict_next_state(self, action: AgentAction) -> "MpcAgent": # <- Apparently how to do forward declaration
         """
@@ -195,17 +208,8 @@ class MpcAgent(Agent):
         The score, normalized to [0, 1]
         """
         explored = np.count_nonzero(self.explored)
-        unexplored = np.argwhere(self.explored == False)
-    
-        if len(unexplored) == 0:
-            return explored / (self.world_height * self.world_width)
-        
-        # Heading towards unexplored tiles is more important
-        distances = np.linalg.norm(unexplored - np.array([self.y, self.x]), axis=1)
-        min_distance = np.min(distances)
-        proximity_bonus = 1.0 / (1.0 + min_distance)
 
-        return (explored + proximity_bonus) / (self.world_height * self.world_width + 1)
+        return explored / (self.world_height * self.world_width)
 
     def _safety_penalty(self) -> float:
         """
@@ -233,3 +237,23 @@ class MpcAgent(Agent):
         The score, normalized to [0, 1]
         """
         return np.sum(self.perception.confidence.matrix) / (self.world_height * self.world_width * self.scan_accuracy)
+
+    def closest_unexplored(self) -> int:
+        min_distance = int('inf')
+
+        frontier = binary_dilation(self.explored) & ~self.explored
+
+
+
+        return min_distance
+    
+    def a_star(self, target: tuple[int, int]) -> int
+        def h(cell) -> int:
+            return 0
+    
+        curr = (self.y, self.x)
+        cost = h(curr)
+        while(True):
+            pass
+
+        return cost
