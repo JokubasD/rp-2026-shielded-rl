@@ -17,7 +17,7 @@ class MpcAgent(Agent):
         
         # How many steps ahead to simulate.
         # The number of deep-copies of the agent made when calculating the action to take will be 5^horizon
-        self.horizon = 6
+        self.horizon = 4
         self.discount = 0.9 # Discount factor, nearer moves are more important than later moves
         self.fire_spread_rate = 0.3
 
@@ -43,12 +43,13 @@ class MpcAgent(Agent):
         Returns:
         The action the agent wants to perform, decided using MPC
         """
-        self.frontier_distances = closest_unexplored(self.world_height, self.world_width, self.explored, self.perception.traversability.matrix)
+        self.frontier_distances = closest_unexplored(self.world_height, self.world_width, self.explored, self.perception.traversability.matrix, self.perception.victims.matrix)
+        # self.frontier_distances -= self.frontier_distances[self.y][self.x]
         self.fire_prediction = self._predict_fire_spread_horizon()
         
         def dfs(model_state: MpcAgent, depth: int, objective: float) -> tuple[float, list]:
-            if depth > self.horizon:
-                return objective + self._objective_terminal(), []
+            if depth >= self.horizon:
+                return objective + model_state._objective_terminal(), []
 
             best_objective = float('-inf')
             best_sequence = []
@@ -68,7 +69,7 @@ class MpcAgent(Agent):
 
             return best_objective, best_sequence
 
-        best_objective, best_sequence = dfs(self.copy(), 1, 0)
+        best_objective, best_sequence = dfs(self.copy(), 0, 0)
 
         if len(best_sequence) == 0:
             self.infeasible_states += 1
@@ -103,7 +104,7 @@ class MpcAgent(Agent):
         new_agent.perception.agents[target] = 1
         new_agent.y, new_agent.x = target
 
-        new_agent.perception.fire.matrix = self.fire_prediction[depth - 1]        
+        new_agent.perception.fire.matrix = self.fire_prediction[depth]        
         new_agent.scan(new_agent.perception)
 
         return new_agent
@@ -170,13 +171,13 @@ class MpcAgent(Agent):
         Returns:
         The objective value
         """
-        w_discovery, w_safety, w_confidence = 200, 1, 3 # To be adjusted
+        w_discovery, w_safety, w_confidence = 100, 1, 3 # To be adjusted
 
         discovery   =  w_discovery * self._discovery_score()
         safety      = -w_safety * self._safety_penalty()
         confidence  =  w_confidence * self._confidence_score()
 
-        # print("Discovery:", discovery, "Safety:", safety, "Confidence:", confidence)
+        # print("STAGE: Discovery:", discovery, "Safety:", safety, "Confidence:", confidence)
 
         return discovery + safety + confidence
     
@@ -191,7 +192,7 @@ class MpcAgent(Agent):
 
         exploration = -w_exploration * self._exploration_penalty()
 
-        return exploration
+        return exploration * self.horizon
     
     def _discovery_score(self) -> float:
         """
@@ -229,6 +230,7 @@ class MpcAgent(Agent):
         Returns:
         The score, normalised to [0, 1+] (Will go over one if the agent has to go through a maze to get there)
         """
+        # return self.frontier_distances[self.y, self.x] / self.horizon
         return self.frontier_distances[self.y, self.x] / (self.world_height + self.world_width)
     
     # def closest_unexplored(self) -> NDArray:
@@ -280,7 +282,7 @@ class MpcAgent(Agent):
     #     return distance
 
 @nb.njit
-def closest_unexplored(h: int , w: int , explored: NDArray, traversability: NDArray) -> NDArray:
+def closest_unexplored(h: int , w: int , explored: NDArray, traversability: NDArray, victims: NDArray) -> NDArray:
     """
     Uses multi-source BFS to calculate the shortest distance from each explored tile to closest unexplored tile
     JIT-compiled with numba for performance - actually faster than numpy this way
@@ -320,7 +322,7 @@ def closest_unexplored(h: int , w: int , explored: NDArray, traversability: NDAr
             nx = x + dx[i]
 
             if 0 <= ny < h and 0 <= nx < w:
-                if traversability[ny, nx] == 0 and distance[ny, nx] == -1:
+                if traversability[ny, nx] == 0 and victims[ny, nx] == 0 and distance[ny, nx] == -1:
                     distance[ny, nx] = distance[y, x] + 1
                     queue[tail] = (ny, nx)
                     tail += 1

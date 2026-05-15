@@ -81,14 +81,16 @@ class Agent:
         state: The true world to scan from
         """
         visible = self._tiles_in_radius() & self._tiles_in_los(state)
-        confidence_bounds = np.where(visible, self._tile_accuracy(), 0)
+
+        confidence, accuracy = self.perception.confidence.matrix, self._tile_accuracy()
+        confidence_bounds = np.where(visible, confidence + accuracy * (1 - confidence), 0)
+        self.perception.confidence.matrix = np.maximum(self.perception.confidence.matrix - self.decay, confidence_bounds)
 
         self.perception.traversability[visible] = trvs = state.traversability[visible]
         self.perception.vulnerability[visible] = vuln = state.vulnerability[visible]
         self.perception.victims[visible] = vict = state.victims[visible]
         self.perception.agents[visible] = agnt = state.agents[visible]
         self.perception.fire[visible] = fire = state.fire[visible]
-        self.perception.confidence.matrix = np.maximum(self.perception.confidence.matrix - self.decay, confidence_bounds)
 
         self.discovered = visible & ~self.explored
         self.explored[visible] = True
