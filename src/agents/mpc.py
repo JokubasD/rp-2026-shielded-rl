@@ -221,7 +221,7 @@ class MpcAgent(Agent):
         Returns:
         The score, normalized to [0, 1]
         """
-        return np.sum(self.perception.confidence.matrix) / (self.world_height * self.world_width * self.scan_accuracy)
+        return np.sum(self.perception.confidence.matrix) / (self.world_height * self.world_width)
     
     def _exploration_penalty(self) -> float:
         """
