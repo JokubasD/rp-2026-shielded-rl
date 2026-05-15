@@ -171,7 +171,7 @@ class MpcAgent(Agent):
         Returns:
         The objective value
         """
-        w_discovery, w_safety, w_confidence = 100, 1, 3 # To be adjusted
+        w_discovery, w_safety, w_confidence = 100, 10, 3 # To be adjusted
 
         discovery   =  w_discovery * self._discovery_score()
         safety      = -w_safety * self._safety_penalty()
@@ -188,7 +188,7 @@ class MpcAgent(Agent):
         Returns:
         The objective value
         """
-        w_exploration = 5
+        w_exploration = 300
 
         exploration = -w_exploration * self._exploration_penalty()
 

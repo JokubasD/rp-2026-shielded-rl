@@ -4,13 +4,13 @@ from .agents.random import RandAgent
 from .agent import Agent
 from .visualization import Visualizer
 
-WIDTH = 50
-HEIGHT = 50
+WIDTH = 60
+HEIGHT = 55
 
 def main():
     sim = Simulator(WIDTH, HEIGHT)
-    config = MapConfig(num_rooms=4, num_victims=5, min_room_length=4, min_room_width=4, max_room_length=10, max_room_width=10, max_tunnel_thickness=1, fire_spread_rate=0.05, fire_duration=10)
-    sim.generate_ground_truth(config, 298909263)
+    config = MapConfig(num_rooms=15, num_victims=15, min_room_length=5, min_room_width=5, max_room_length=10, max_room_width=10, max_tunnel_thickness=1, fire_spread_rate=0.05, fire_duration=10, initial_fire_points=2)
+    sim.generate_ground_truth(config, 95007438)
 
     # Saved seeds: 182840517 (181 steps), 210577037; 335492940
 
@@ -24,7 +24,7 @@ def main():
                        sim.ground_truth.fire)
 
     print("Running Simulation steps...")
-    history = sim.run(250)
+    history = sim.run(700)
 
     # print(agent1.closest_unexplored())
     # distances_end = closest_unexplored(agent1.world_height, agent1.world_width, agent1.explored, agent1.perception.traversability.matrix, agent1.perception.victims.matrix)
