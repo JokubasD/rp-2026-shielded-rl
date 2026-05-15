@@ -45,8 +45,10 @@ class Agent:
 
         # Metrics
         self.illegal_moves = 0
+        self.infeasible_states = 0
         self.move_history: list[tuple[int, int]] = [(x, y)] # Cells the agent has been to
-        self.explored: np.ndarray = np.zeros((height, width), dtype=bool) # Cells the agent has scanned
+        self.explored: np.ndarray = np.zeros((height, width), dtype=bool) # Cells the agent has scanned at any point in the run
+        self.discovered: np.ndarray = np.zeros((height, width), dtype=bool) # Cells the agent scanned for the first time this step
 
     def copy(self) -> Self:
         cls = type(self)
@@ -67,6 +69,7 @@ class Agent:
         copy.illegal_moves = self.illegal_moves
         copy.move_history = self.move_history.copy()
         copy.explored = np.copy(self.explored)
+        copy.discovered = np.copy(self.discovered)
 
         return copy
 
@@ -87,6 +90,7 @@ class Agent:
         self.perception.fire[visible] = fire = state.fire[visible]
         self.perception.confidence.matrix = np.maximum(self.perception.confidence.matrix - self.decay, confidence_bounds)
 
+        self.discovered = visible & ~self.explored
         self.explored[visible] = True
 
         ys, xs = np.nonzero(visible)

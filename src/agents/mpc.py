@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from numba import njit
+import numba as nb
 
 from typing import Self
 
@@ -17,9 +17,12 @@ class MpcAgent(Agent):
         
         # How many steps ahead to simulate.
         # The number of deep-copies of the agent made when calculating the action to take will be 5^horizon
-        self.horizon = 3
+        self.horizon = 6
         self.discount = 0.9 # Discount factor, nearer moves are more important than later moves
         self.fire_spread_rate = 0.3
+
+        self.frontier_distances: NDArray
+        self.fire_prediction: NDArray
     
     def copy(self) -> Self:
         copy = super().copy()
@@ -27,6 +30,9 @@ class MpcAgent(Agent):
         copy.horizon = self.horizon
         copy.discount = self.discount
         copy.fire_spread_rate = self.fire_spread_rate
+
+        copy.frontier_distances = np.copy(self.frontier_distances)
+        copy.fire_prediction = np.copy(self.fire_prediction)
 
         return copy
 
@@ -37,9 +43,12 @@ class MpcAgent(Agent):
         Returns:
         The action the agent wants to perform, decided using MPC
         """
+        self.frontier_distances = closest_unexplored(self.world_height, self.world_width, self.explored, self.perception.traversability.matrix)
+        self.fire_prediction = self._predict_fire_spread_horizon()
+        
         def dfs(model_state: MpcAgent, depth: int, objective: float) -> tuple[float, list]:
             if depth > self.horizon:
-                return objective, []
+                return objective + self._objective_terminal(), []
 
             best_objective = float('-inf')
             best_sequence = []
@@ -48,11 +57,11 @@ class MpcAgent(Agent):
                 if not model_state._is_feasible(action):
                     continue
 
-                next_state = model_state._predict_next_state(action)
-                next_objective = objective + (self.discount ** depth * next_state._objective())
+                next_state = model_state._predict_next_state(action, depth)
+                next_objective = objective + ((self.discount ** depth) * next_state._objective_stage())
                 
                 future_obj, future_seq = dfs(next_state, depth + 1, next_objective)
-                
+
                 if future_obj > best_objective:
                     best_objective = future_obj
                     best_sequence = [action] + future_seq
@@ -61,37 +70,18 @@ class MpcAgent(Agent):
 
         best_objective, best_sequence = dfs(self.copy(), 1, 0)
 
+        if len(best_sequence) == 0:
+            self.infeasible_states += 1
+            print("INFEASIBLE STATE REACHED ==========================")
+            print("Dscv:", self._discovery_score())
+            print("Safety:", self._safety_penalty())
+            print("Conf:", self._confidence_score())
+            print("Expl:", self._exploration_penalty())
+            return AgentAction.WAIT
+
         return best_sequence[0]
-
-    def _objective_stage(self) -> float:
-        """
-        Calculates the agent's predicted stage reward
-
-        Returns:
-        The objective value
-        """
-        w_exploration, w_safety, w_confidence = 100, 1, 3 # To be adjusted
-
-        exploration =  w_exploration * self._exploration_score()
-        safety      = -w_safety * self._safety_penalty()
-        confidence  =  w_confidence * self._confidence_score()
-
-        # print("Exploration:", exploration, "Safety:", safety, "Confidence:", confidence)
-
-        return exploration + safety + confidence
     
-    def _objective_terminal(self, frontier_distances) -> float:
-        """
-        Calculates the agent's predicted terminal reward
-
-        Returns:
-        The objective value
-        """
-        
-
-        return min_distance
-
-    def _predict_next_state(self, action: AgentAction) -> "MpcAgent": # <- Apparently how to do forward declaration
+    def _predict_next_state(self, action: AgentAction, depth: int) -> "MpcAgent": # <- Apparently how to do forward declaration
         """
         Creates a prediction of the state after performing the given action.
         This assumes the action is feasible (see self._is_feasible)
@@ -104,53 +94,20 @@ class MpcAgent(Agent):
         """
         new_agent = self.copy()
 
-        match action:
-            case AgentAction.MOVE_UP:
-                new_agent.perception.agents[self.y - 1][self.x] = 1
-                new_agent.perception.agents[self.y][self.x] = 0
-                new_agent.y -= 1
-            case AgentAction.MOVE_DOWN:
-                new_agent.perception.agents[self.y + 1][self.x] = 1
-                new_agent.perception.agents[self.y][self.x] = 0
-                new_agent.y += 1
-            case AgentAction.MOVE_LEFT:
-                new_agent.perception.agents[self.y][self.x - 1] = 1
-                new_agent.perception.agents[self.y][self.x] = 0
-                new_agent.x -= 1
-            case AgentAction.MOVE_RIGHT:
-                new_agent.perception.agents[self.y][self.x + 1] = 1
-                new_agent.perception.agents[self.y][self.x] = 0
-                new_agent.x += 1
+        # up, down, left, right, wait
+        dy = np.array([-1, 1, 0, 0, 0])
+        dx = np.array([0, 0, -1, 1, 0])
+        current = self.y, self.x
+        target = self.y + dy[action], self.x + dx[action]
+        new_agent.perception.agents[current] = 0
+        new_agent.perception.agents[target] = 1
+        new_agent.y, new_agent.x = target
 
-        new_agent.perception.fire.matrix = self._predict_fire_spread()        
+        new_agent.perception.fire.matrix = self.fire_prediction[depth - 1]        
         new_agent.scan(new_agent.perception)
 
         return new_agent
 
-    def _predict_fire_spread(self) -> NDArray:
-        """
-        Predicts the spread of fire.
-        Does so probabilistically (where random.random() should be seeded), and with an educated guess on spread rate
-
-        Returns:
-        The predicted fire matrix
-        """
-        # Probabilistically (Randomly (seeded) ignite, educated guess on spread rate)
-        predicted_fire = np.copy(self.perception.fire.matrix)
-        
-        random_noise = np.random.rand(self.world_height, self.world_width)
-
-        ignited_mask = (predicted_fire == FireLevel.FLAMMABLE) & (random_noise < self.fire_spread_rate)
-        predicted_fire[ignited_mask] = FireLevel.BURNING
-
-        adjacent_mask = binary_dilation(ignited_mask)
-        safe_mask = predicted_fire == FireLevel.SAFE
-        traversable_mask = self.perception.traversability == TraversabilityLevel.TRAVERSIBLE
-        exposed_mask = adjacent_mask & safe_mask & traversable_mask
-        predicted_fire[exposed_mask] = FireLevel.FLAMMABLE
-
-        return predicted_fire
-    
     def _predict_fire_spread_horizon(self) -> NDArray:
         """
         Predicts the spread of fire over every step until the horizon, since fire spread is atm the same for every branch
@@ -198,30 +155,62 @@ class MpcAgent(Agent):
         if self.perception.victims[target_cell_y][target_cell_x] == 1: # Hit victim
             return False
 
+        # if self.perception.agents[target_cell_y][target_cell_x] == 1: # Hit agent
+        #     return False
+        
         if self.perception.fire.matrix[target_cell_y][target_cell_x] == FireLevel.BURNING: # On fire
             return False
         
         return self.perception.traversability[target_cell_y][target_cell_x] == 0 # Didn't hit wall
     
-    def _exploration_score(self) -> float:
+    def _objective_stage(self) -> float:
         """
-        Calculates a score in regards to how much area is explored.
+        Calculates the agent's predicted stage reward - calculated for every step
+
+        Returns:
+        The objective value
+        """
+        w_discovery, w_safety, w_confidence = 200, 1, 3 # To be adjusted
+
+        discovery   =  w_discovery * self._discovery_score()
+        safety      = -w_safety * self._safety_penalty()
+        confidence  =  w_confidence * self._confidence_score()
+
+        # print("Discovery:", discovery, "Safety:", safety, "Confidence:", confidence)
+
+        return discovery + safety + confidence
+    
+    def _objective_terminal(self) -> float:
+        """
+        Calculates the agent's predicted terminal reward - calculated only for the last step
+
+        Returns:
+        The objective value
+        """
+        w_exploration = 5
+
+        exploration = -w_exploration * self._exploration_penalty()
+
+        return exploration
+    
+    def _discovery_score(self) -> float:
+        """
+        Calculates a score in regards to how much area is discovered this turn.
 
         Returns:
         The score, normalized to [0, 1]
         """
-        explored = np.count_nonzero(self.explored)
+        newly_explored = np.count_nonzero(self.discovered)
 
-        return explored / (self.world_height * self.world_width)
+        return newly_explored / ((np.pi * self.scan_radius ** 2) / 2)
 
     def _safety_penalty(self) -> float:
         """
-        Calculates a score in regards to how unsafe the agent is
+        Calculates a penalty in regards to how unsafe the agent is
 
         Returns:
         The score, normalized to [0, 1]
         """
-        # Penalty for being on vulnerable tile
         return self.perception.vulnerability[self.y][self.x]
         
     def _confidence_score(self) -> float:
@@ -232,23 +221,108 @@ class MpcAgent(Agent):
         The score, normalized to [0, 1]
         """
         return np.sum(self.perception.confidence.matrix) / (self.world_height * self.world_width * self.scan_accuracy)
-
-    def closest_unexplored(self) -> int:
-        min_distance = int('inf')
-
-        frontier = binary_dilation(self.explored) & ~self.explored
-
-
-
-        return min_distance
     
-    def a_star(self, target: tuple[int, int]) -> int
-        def h(cell) -> int:
-            return 0
-    
-        curr = (self.y, self.x)
-        cost = h(curr)
-        while(True):
-            pass
+    def _exploration_penalty(self) -> float:
+        """
+        Calculates a penalty in regards to how far from an unexplored tile the agent is 
 
-        return cost
+        Returns:
+        The score, normalised to [0, 1+] (Will go over one if the agent has to go through a maze to get there)
+        """
+        return self.frontier_distances[self.y, self.x] / (self.world_height + self.world_width)
+    
+    # def closest_unexplored(self) -> NDArray:
+    #     """
+    #     Uses multi-source BFS to calculate the shortest distance from each explored tile to closest unexplored tile
+    #     JIT-compiled with numba for performance - technically faster than numpy this way
+
+    #     Returns:
+    #     A world-sized ndarray where each tile is:
+    #         0 if the tile is unexplored or a wall
+    #         x if the tile is explored, where x is the true shortest distance to the closest unexplored tile
+    #     """
+    #     distance = np.full((self.world_height, self.world_width), -1, dtype=np.int16)
+
+    #     # pre-allocate queue so numba doesn't do any dynamic memory allocation
+    #     # queue x and y together for cache locality
+    #     max_queue_size = self.world_height * self.world_width
+    #     queue = np.zeros((max_queue_size, 2), dtype=np.int16)
+
+    #     head = 0
+    #     tail = 0
+
+    #     for y in range(self.world_height):
+    #         for x in range(self.world_width):
+    #             if not self.explored[y, x]:
+    #                 distance[y, x] = 0
+    #                 queue[tail] = (y, x)
+    #                 tail += 1
+    #     tail -= 1
+
+    #     # up, down, left, right
+    #     dy = np.array([-1, 1, 0, 0])
+    #     dx = np.array([0, 0, -1, 1])
+
+    #     while head < tail:
+    #         (y, x) = queue[head]
+    #         head += 1
+
+    #         for i in range(4):
+    #             ny = y + dy[i]
+    #             nx = x + dx[i]
+
+    #             if 0 <= ny < self.world_height and 0 <= nx < self.world_width:
+    #                 if distance[ny, nx] == -1 and self.perception.traversability.matrix[ny, nx] == 0:
+    #                     distance[ny, nx] = distance[y, x] + 1
+    #                     queue[tail] = (ny, nx)
+    #                     tail += 1
+
+    #     return distance
+
+@nb.njit
+def closest_unexplored(h: int , w: int , explored: NDArray, traversability: NDArray) -> NDArray:
+    """
+    Uses multi-source BFS to calculate the shortest distance from each explored tile to closest unexplored tile
+    JIT-compiled with numba for performance - actually faster than numpy this way
+
+    Returns:
+    A world-sized ndarray where each tile is:
+        0 if the tile is unexplored or a wall
+        x if the tile is explored, where x is the true shortest distance to the closest unexplored tile
+    """
+    distance = np.full((h, w), -1, dtype=np.int16)
+
+    # pre-allocate queue so numba doesn't do any dynamic memory allocation
+    # queue x and y together for cache locality
+    max_queue_size = h * w
+    queue = np.zeros((max_queue_size, 2), dtype=np.int16)
+
+    head = 0
+    tail = 0
+
+    for y in range(h):
+        for x in range(w):
+            if not explored[y, x]:
+                distance[y, x] = 0
+                queue[tail] = (y, x)
+                tail += 1
+
+    # up, down, left, right
+    dy = np.array([-1, 1, 0, 0])
+    dx = np.array([0, 0, -1, 1])
+
+    while head < tail:
+        (y, x) = queue[head]
+        head += 1
+
+        for i in range(4):
+            ny = y + dy[i]
+            nx = x + dx[i]
+
+            if 0 <= ny < h and 0 <= nx < w:
+                if traversability[ny, nx] == 0 and distance[ny, nx] == -1:
+                    distance[ny, nx] = distance[y, x] + 1
+                    queue[tail] = (ny, nx)
+                    tail += 1
+
+    return distance
