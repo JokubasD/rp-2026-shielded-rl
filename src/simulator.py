@@ -44,13 +44,14 @@ class Simulator:
         if not self.metrics.history:
             self.metrics.record_snapshot()  # capture initial metric state
 
+        for agent in self.agents:
+            agent.scan(self.ground_truth)
+
         intents = self._collect_intents()
         self._resolve_agent_conflicts(intents)
         self._commit_moves(intents)
         self._apply_vulnerability_damage()
-
-        for agent in self.agents:
-            agent.scan(self.ground_truth)
+        self._perform_trips()
 
         # Perform environment actions (firespread, etc.)
         self.fire_manager.spread_fire(self.ground_truth)
@@ -241,6 +242,42 @@ class Simulator:
         for agent in self.agents:
             vulnerability = float(self.ground_truth.vulnerability[agent.y][agent.x])
             self.metrics.record_vulnerable_collision(agent, vulnerability)
+
+    def _perform_trips(self) -> None:
+        """
+        For agents on vulnerable terrain, will make them trip depending on vulnerability level
+        """
+        for agent in self.agents:
+            tile_vulnerability = float(self.ground_truth.vulnerability[agent.y][agent.x])
+
+            trip_prob = max(0.0, tile_vulnerability - 0.5 * agent.perception.confidence[agent.y][agent.x])
+            if np.random.random() > trip_prob:
+                continue # Don't trip
+
+            # Trip
+            direction = np.random.randint(0, 4) # [0:UP, 1:LEFT, 2:DOWN, 3:RIGHT]
+            dy = [-1, 0, 1, 0]
+            dx = [0, -1, 0, 1]
+            intended_x, intended_y = agent.x + dx[direction], agent.y + dy[direction]
+            
+            # Check for collisions
+            is_wall = self.ground_truth.traversability[intended_y][intended_x] == TraversabilityLevel.UNTRAVERSIBLE
+            is_out_of_bounds = 0 < intended_x < self.width and 0 < intended_y < self.height
+            if is_wall or is_out_of_bounds:
+                self.metrics.record_terrain_collision(agent)
+                continue
+            if self.ground_truth.agents[intended_y][intended_x] == 1:
+                self.metrics.record_inter_agent_collision(agent)
+                continue
+            if self.ground_truth.victims[intended_y][intended_x] == VictimPresence.PRESENT:
+                self.metrics.record_victim_collision(agent)
+                continue
+
+            # Move the agent
+            self.ground_truth.agents[agent.y][agent.x] = 0
+            self.ground_truth.agents[intended_y][intended_x] = 1
+            agent.move_to(intended_x, intended_y)
+            
 
     def generate_ground_truth(self, config: MapConfig | None = None, seed: int | None = None) -> None:
         """
