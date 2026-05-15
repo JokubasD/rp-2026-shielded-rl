@@ -58,6 +58,7 @@ class Simulator:
         self.metrics.steps_taken += 1
         self._update_victim_metrics()
         self._update_area_explored()
+        self._update_infeasible_states()
         self.metrics.record_snapshot()
 
         res = [deepcopy(self.ground_truth)]
@@ -81,9 +82,9 @@ class Simulator:
         """
         record: list[list[State]] = []
         # Record the initial states
-        record.append([deepcopy(self.ground_truth)])
+        record.append([self.ground_truth.copy()])
         for agent in self.agents:
-            record.append([deepcopy(agent.perception)])
+            record.append([agent.perception.copy()])
 
         for _ in range(steps):
             # Record steps
@@ -242,6 +243,10 @@ class Simulator:
         for agent in self.agents:
             vulnerability = float(self.ground_truth.vulnerability[agent.y][agent.x])
             self.metrics.record_vulnerable_collision(agent, vulnerability)
+
+    def _update_infeasible_states(self) -> None:
+        for agent in self.agents:
+            self.metrics.infeasible_states[agent] = agent.infeasible_states
 
     def _perform_trips(self) -> None:
         """
