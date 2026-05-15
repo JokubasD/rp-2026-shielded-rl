@@ -1,4 +1,3 @@
-from copy import deepcopy
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -44,13 +43,14 @@ class Simulator:
         if not self.metrics.history:
             self.metrics.record_snapshot()  # capture initial metric state
 
+        for agent in self.agents:
+            agent.scan(self.ground_truth)
+
         intents = self._collect_intents()
         self._resolve_agent_conflicts(intents)
         self._commit_moves(intents)
+        self._perform_trips()
         self._apply_vulnerability_damage()
-
-        for agent in self.agents:
-            agent.scan(self.ground_truth)
 
         # Perform environment actions (firespread, etc.)
         self.fire_manager.spread_fire(self.ground_truth)
@@ -60,9 +60,9 @@ class Simulator:
         self._update_infeasible_states()
         self.metrics.record_snapshot()
 
-        res = [deepcopy(self.ground_truth)]
+        res = [self.ground_truth.copy()]
         for agent in self.agents:
-            res.append(deepcopy(agent.perception))
+            res.append(agent.perception.copy())
 
         return res
 
@@ -246,6 +246,44 @@ class Simulator:
     def _update_infeasible_states(self) -> None:
         for agent in self.agents:
             self.metrics.infeasible_states[agent] = agent.infeasible_states
+
+    def _perform_trips(self) -> None:
+        """
+        For agents on vulnerable terrain, will make them trip depending on vulnerability level
+        """
+        for agent in self.agents:
+            tile_vulnerability = float(self.ground_truth.vulnerability[agent.y][agent.x])
+            tile_confidence = agent.perception.confidence[agent.y][agent.x]
+
+            confidence_mult = 0.7
+            trip_prob = max(0.0, tile_vulnerability - confidence_mult * tile_confidence)
+            if np.random.random() > trip_prob:
+                continue # Don't trip
+
+            # Trip
+            direction = np.random.randint(0, 4) # [0:UP, 1:DOWN, 2:LEFT, 3:RIGHT]
+            dy = [-1, 1, 0, 0]
+            dx = [0, 0, -1, 1]
+            intended_x, intended_y = agent.x + dx[direction], agent.y + dy[direction]
+            
+            # Check for collisions
+            is_wall = self.ground_truth.traversability[intended_y][intended_x] == TraversabilityLevel.UNTRAVERSIBLE
+            is_out_of_bounds = not(0 < intended_x < self.width and 0 < intended_y < self.height)
+            if is_wall or is_out_of_bounds:
+                self.metrics.record_terrain_collision(agent)
+                continue
+            if self.ground_truth.agents[intended_y][intended_x] == 1:
+                self.metrics.record_inter_agent_collision(agent)
+                continue
+            if self.ground_truth.victims[intended_y][intended_x] == VictimPresence.PRESENT:
+                self.metrics.record_victim_collision(agent)
+                continue
+
+            # Move the agent
+            self.ground_truth.agents[agent.y][agent.x] = 0
+            self.ground_truth.agents[intended_y][intended_x] = 1
+            agent.move_to(intended_x, intended_y)
+            
 
     def generate_ground_truth(self, config: MapConfig | None = None, seed: int | None = None) -> None:
         """
