@@ -43,14 +43,14 @@ class Simulator:
         if not self.metrics.history:
             self.metrics.record_snapshot()  # capture initial metric state
 
-        for agent in self.agents:
-            agent.scan(self.ground_truth)
-
         intents = self._collect_intents()
         self._resolve_agent_conflicts(intents)
         self._commit_moves(intents)
         self._perform_trips()
         self._apply_vulnerability_damage()
+        
+        for agent in self.agents:
+            agent.scan(self.ground_truth)
 
         # Perform environment actions (firespread, etc.)
         self.fire_manager.spread_fire(self.ground_truth)
@@ -82,7 +82,9 @@ class Simulator:
         record: list[list[State]] = []
         # Record the initial states
         record.append([self.ground_truth.copy()])
+
         for agent in self.agents:
+            agent.scan(self.ground_truth)
             record.append([agent.perception.copy()])
 
         for _ in range(steps):
