@@ -121,7 +121,8 @@ class MpcAgent(Agent):
         for i in range(self.horizon):
             random_noise = np.random.rand(self.world_height, self.world_width)
 
-            ignited_mask = (current_fire == FireLevel.FLAMMABLE) & (random_noise < self.fire_spread_rate)
+            adjacent_mask = binary_dilation(current_fire == FireLevel.BURNING)
+            ignited_mask = adjacent_mask & (current_fire == FireLevel.FLAMMABLE) & (random_noise < self.fire_spread_rate)
             current_fire[ignited_mask] = FireLevel.BURNING
 
             adjacent_mask = binary_dilation(ignited_mask)
