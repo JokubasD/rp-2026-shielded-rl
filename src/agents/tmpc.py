@@ -5,6 +5,7 @@ class TmpcAgent(MpcAgent):
     def __init__(self, name: str, x: int, y: int, width: int, height: int, 
                  decay: float, scan_accuracy: float, scan_radius: int, scan_falloff: bool):
         super().__init__(name, x, y, width, height, decay, scan_accuracy, scan_radius, scan_falloff)
+        self.fire_spread_rate = 1.0
 
     def _is_feasible(self, action: AgentAction) -> bool:
         """
