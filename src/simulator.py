@@ -49,11 +49,12 @@ class Simulator:
         self._perform_trips()
         self._apply_vulnerability_damage()
         
-        for agent in self.agents:
-            agent.scan(self.ground_truth)
-
         # Perform environment actions (firespread, etc.)
         self.fire_manager.spread_fire(self.ground_truth)
+
+        for agent in self.agents:
+            agent.scan(self.ground_truth)
+            
         self.metrics.steps_taken += 1
         self._update_victim_metrics()
         self._update_area_explored()

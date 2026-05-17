@@ -7,7 +7,7 @@ class TmpcAgent(MpcAgent):
         super().__init__(name, x, y, width, height, decay, scan_accuracy, scan_radius, scan_falloff)
         self.fire_spread_rate = 1.0
 
-    def _is_feasible(self, action: AgentAction) -> bool:
+    def _is_feasible(self, target_cell: tuple[int, int]) -> bool:
         """
         Decides whether a given action will result in a feasible position
         For TMPC, this now also checks whether tripping after this move results in an infeasible state
@@ -24,10 +24,10 @@ class TmpcAgent(MpcAgent):
             if out_of_bounds: return False
             wall = self.perception.traversability[y][x] == 1
             victim = self.perception.victims[y][x] == 1
-            fire = self.perception.fire.matrix[y][x] == FireLevel.BURNING
+            fire = self.perception.fire[y][x] == FireLevel.BURNING
             return not(wall or victim or fire)
 
-        target_cell_x, target_cell_y = self._target_cell(action)
+        target_cell_x, target_cell_y = target_cell
         if not cell_feasible(target_cell_x, target_cell_y):
             return False
 
