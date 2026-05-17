@@ -1,53 +1,41 @@
-from .mpc import MpcAgent, closest_unexplored
-from ..constants import AgentAction
+from .mpc import MpcAgent
+from ..constants import AgentAction, FireLevel
 
 class TmpcAgent(MpcAgent):
     def __init__(self, name: str, x: int, y: int, width: int, height: int, 
                  decay: float, scan_accuracy: float, scan_radius: int, scan_falloff: bool):
         super().__init__(name, x, y, width, height, decay, scan_accuracy, scan_radius, scan_falloff)
 
-    def get_action(self):
+    def _is_feasible(self, action: AgentAction) -> bool:
         """
-        Decides what action to perform using exhaustive search
+        Decides whether a given action will result in a feasible position
+        For TMPC, this now also checks whether tripping after this move results in an infeasible state
+
+        Parameters:
+        action: The action to check
 
         Returns:
-        The action the agent wants to perform, decided using MPC
+        Whether the action is feasible
         """
-        self.frontier_distances = closest_unexplored(self.world_height, self.world_width, self.explored, self.perception.traversability.matrix, self.perception.victims.matrix)
-        # self.frontier_distances -= self.frontier_distances[self.y][self.x]
-        self.fire_prediction = self._predict_fire_spread_horizon()
-        
-        def dfs(model_state: MpcAgent, depth: int, objective: float) -> tuple[float, list]:
-            if depth >= self.horizon:
-                return objective + model_state._objective_terminal(), []
 
-            best_objective = float('-inf')
-            best_sequence = []
+        def cell_feasible(x: int, y: int) -> bool:
+            out_of_bounds = not(0 <= x < self.world_width and 0 <= y < self.world_height)
+            wall = self.perception.traversability[y][x] == 1
+            victim = self.perception.victims[y][x] == 1
+            fire = self.perception.fire.matrix[y][x] == FireLevel.BURNING
+            return not(out_of_bounds or wall or victim or fire)
 
-            for action in AgentAction:
-                if not model_state._is_feasible(action):
-                    continue
+        target_cell_x, target_cell_y = self._target_cell(action)
+        if not cell_feasible(target_cell_x, target_cell_y):
+            return False
 
-                next_state = model_state._predict_next_state(action, depth)
-                next_objective = objective + ((self.discount ** depth) * next_state._objective_stage())
-                
-                future_obj, future_seq = dfs(next_state, depth + 1, next_objective)
-
-                if future_obj > best_objective:
-                    best_objective = future_obj
-                    best_sequence = [action] + future_seq
-
-            return best_objective, best_sequence
-
-        best_objective, best_sequence = dfs(self.copy(), 0, 0)
-
-        if len(best_sequence) == 0:
-            self.infeasible_states += 1
-            print("INFEASIBLE STATE REACHED ==========================")
-            print("Dscv:", self._discovery_score())
-            print("Safety:", self._safety_penalty())
-            print("Conf:", self._confidence_score())
-            print("Expl:", self._exploration_penalty())
-            return AgentAction.WAIT
-
-        return best_sequence[0]
+        # Check if tripping after this move results in an infeasible state
+        # [up, down, left, right]
+        dy = [-1, 1, 0, 0]
+        dx = [0, 0, -1, 1]
+        for i in range(4):
+            new_x, new_y = target_cell_x + dx[i], target_cell_y + dy[i]
+            if not cell_feasible(new_x, new_y):
+                return False
+            
+        return True
