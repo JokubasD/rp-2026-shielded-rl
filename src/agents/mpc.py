@@ -1,14 +1,12 @@
 import numpy as np
 from numpy.typing import NDArray
 
-import numba as nb
-
 from typing import Self
 
 from scipy.ndimage import binary_dilation
 
-from src.agent import Agent, AgentAction
-from src.constants import FireLevel, TraversabilityLevel
+from src.agent import Agent
+from src.constants import AgentAction, FireLevel, TraversabilityLevel
 
 class MpcAgent(Agent):
     def __init__(self, name: str, x: int, y: int, width: int, height: int, 
@@ -43,8 +41,7 @@ class MpcAgent(Agent):
         Returns:
         The action the agent wants to perform, decided using MPC
         """
-        self.frontier_distances = closest_unexplored(self.world_height, self.world_width, self.explored, self.perception.traversability.matrix, self.perception.victims.matrix)
-        # self.frontier_distances -= self.frontier_distances[self.y][self.x]
+        self.frontier_distances = self._closest_unexplored()
         self.fire_prediction = self._predict_fire_spread_horizon()
         
         def dfs(model_state: MpcAgent, depth: int, objective: float) -> tuple[float, list]:
@@ -55,7 +52,7 @@ class MpcAgent(Agent):
             best_sequence = []
 
             for action in AgentAction:
-                if not model_state._is_feasible(action):
+                if not model_state._is_feasible(model_state._target_cell(action)):
                     continue
 
                 next_state = model_state._predict_next_state(action, depth)
@@ -137,18 +134,18 @@ class MpcAgent(Agent):
 
         return predictions
 
-    def _is_feasible(self, action: AgentAction) -> bool:
+    def _is_feasible(self, target_cell: tuple[int, int]) -> bool:
         """
-        Decides whether a given action will result in a feasible position
+        Decides whether a given target cell will result in a feasible position
         (e.g. not walking into a wall)
 
         Parameters:
-        action: The action to check
+        target_cell: The cell to check (x, y)
 
         Returns:
-        Whether the action is feasible
+        Whether the cell is feasible
         """
-        target_cell_x, target_cell_y = self._target_cell(action)
+        target_cell_x, target_cell_y = target_cell
         if (target_cell_x < 0 or target_cell_x >= self.world_width or 
             target_cell_y < 0 or target_cell_y >= self.world_height): # Out of bounds
             return False
@@ -230,101 +227,52 @@ class MpcAgent(Agent):
         Returns:
         The score, normalised to [0, 1+] (Will go over one if the agent has to go through a maze to get there)
         """
-        # return self.frontier_distances[self.y, self.x] / self.horizon
         return self.frontier_distances[self.y, self.x] / (self.world_height + self.world_width)
     
-    # def closest_unexplored(self) -> NDArray:
-    #     """
-    #     Uses multi-source BFS to calculate the shortest distance from each explored tile to closest unexplored tile
-    #     JIT-compiled with numba for performance - technically faster than numpy this way
+    def _closest_unexplored(self) -> NDArray:
+        """
+        Uses multi-source BFS to calculate the shortest distance from each explored tile to closest unexplored tile
+        JIT-compiled with numba for performance - technically faster than numpy this way
 
-    #     Returns:
-    #     A world-sized ndarray where each tile is:
-    #         0 if the tile is unexplored or a wall
-    #         x if the tile is explored, where x is the true shortest distance to the closest unexplored tile
-    #     """
-    #     distance = np.full((self.world_height, self.world_width), -1, dtype=np.int16)
+        Returns:
+        A world-sized ndarray where each tile is:
+            0 if the tile is unexplored or a wall
+            x if the tile is explored, where x is the true shortest distance to the closest unexplored tile
+        """
+        distance = np.full((self.world_height, self.world_width), -1, dtype=np.int16)
 
-    #     # pre-allocate queue so numba doesn't do any dynamic memory allocation
-    #     # queue x and y together for cache locality
-    #     max_queue_size = self.world_height * self.world_width
-    #     queue = np.zeros((max_queue_size, 2), dtype=np.int16)
+        # pre-allocate queue so numba doesn't do any dynamic memory allocation
+        # queue x and y together for cache locality
+        max_queue_size = self.world_height * self.world_width
+        queue = np.zeros((max_queue_size, 2), dtype=np.int16)
 
-    #     head = 0
-    #     tail = 0
+        head = 0
+        tail = 0
 
-    #     for y in range(self.world_height):
-    #         for x in range(self.world_width):
-    #             if not self.explored[y, x]:
-    #                 distance[y, x] = 0
-    #                 queue[tail] = (y, x)
-    #                 tail += 1
-    #     tail -= 1
-
-    #     # up, down, left, right
-    #     dy = np.array([-1, 1, 0, 0])
-    #     dx = np.array([0, 0, -1, 1])
-
-    #     while head < tail:
-    #         (y, x) = queue[head]
-    #         head += 1
-
-    #         for i in range(4):
-    #             ny = y + dy[i]
-    #             nx = x + dx[i]
-
-    #             if 0 <= ny < self.world_height and 0 <= nx < self.world_width:
-    #                 if distance[ny, nx] == -1 and self.perception.traversability.matrix[ny, nx] == 0:
-    #                     distance[ny, nx] = distance[y, x] + 1
-    #                     queue[tail] = (ny, nx)
-    #                     tail += 1
-
-    #     return distance
-
-@nb.njit
-def closest_unexplored(h: int , w: int , explored: NDArray, traversability: NDArray, victims: NDArray) -> NDArray:
-    """
-    Uses multi-source BFS to calculate the shortest distance from each explored tile to closest unexplored tile
-    JIT-compiled with numba for performance - actually faster than numpy this way
-
-    Returns:
-    A world-sized ndarray where each tile is:
-        0 if the tile is unexplored or a wall
-        x if the tile is explored, where x is the true shortest distance to the closest unexplored tile
-    """
-    distance = np.full((h, w), -1, dtype=np.int16)
-
-    # pre-allocate queue so numba doesn't do any dynamic memory allocation
-    # queue x and y together for cache locality
-    max_queue_size = h * w
-    queue = np.zeros((max_queue_size, 2), dtype=np.int16)
-
-    head = 0
-    tail = 0
-
-    for y in range(h):
-        for x in range(w):
-            if not explored[y, x]:
-                distance[y, x] = 0
-                queue[tail] = (y, x)
-                tail += 1
-
-    # up, down, left, right
-    dy = np.array([-1, 1, 0, 0])
-    dx = np.array([0, 0, -1, 1])
-
-    while head < tail:
-        (y, x) = queue[head]
-        head += 1
-
-        for i in range(4):
-            ny = y + dy[i]
-            nx = x + dx[i]
-
-            if 0 <= ny < h and 0 <= nx < w:
-                if traversability[ny, nx] == 0 and victims[ny, nx] == 0 and distance[ny, nx] == -1:
-                    distance[ny, nx] = distance[y, x] + 1
-                    queue[tail] = (ny, nx)
+        for y in range(self.world_height):
+            for x in range(self.world_width):
+                if not self.explored[y, x]:
+                    distance[y, x] = 0
+                    queue[tail] = (y, x)
                     tail += 1
+        tail -= 1
 
-    return distance
+        # up, down, left, right
+        dy = np.array([-1, 1, 0, 0])
+        dx = np.array([0, 0, -1, 1])
+
+        while head < tail:
+            (y, x) = queue[head]
+            head += 1
+
+            for i in range(4):
+                ny = y + dy[i]
+                nx = x + dx[i]
+
+                if 0 <= ny < self.world_height and 0 <= nx < self.world_width:
+                    if distance[ny, nx] == -1 and self._is_feasible((nx, ny)):
+                        distance[ny, nx] = distance[y, x] + 1
+                        queue[tail] = (ny, nx)
+                        tail += 1
+
+        return distance
