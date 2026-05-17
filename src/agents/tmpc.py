@@ -20,10 +20,11 @@ class TmpcAgent(MpcAgent):
 
         def cell_feasible(x: int, y: int) -> bool:
             out_of_bounds = not(0 <= x < self.world_width and 0 <= y < self.world_height)
+            if out_of_bounds: return False
             wall = self.perception.traversability[y][x] == 1
             victim = self.perception.victims[y][x] == 1
             fire = self.perception.fire.matrix[y][x] == FireLevel.BURNING
-            return not(out_of_bounds or wall or victim or fire)
+            return not(wall or victim or fire)
 
         target_cell_x, target_cell_y = self._target_cell(action)
         if not cell_feasible(target_cell_x, target_cell_y):
