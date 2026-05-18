@@ -1,3 +1,6 @@
+import logging
+import argparse
+
 from .simulator import Simulator, MapConfig, visualize_grid_gen
 from .agents.mpc import MpcAgent
 from .agents.random import RandAgent
@@ -7,7 +10,23 @@ from .visualization import Visualizer
 WIDTH = 40
 HEIGHT = 40
 
+logger = logging.getLogger(__name__)
+
+def setup_logging(is_debug: bool):
+    """Configures the global logging level and format."""
+    log_level = logging.DEBUG if is_debug else logging.INFO
+
+    logging.basicConfig(
+        level=log_level,
+        format='%(levelname)s - %(message)s',
+    )
+
 def main():
+    parser = argparse.ArgumentParser(description="Run the search and rescue simulation.")
+    parser.add_argument('--debug', action='store_true', help="Enable debug logging")
+    args = parser.parse_args()
+    setup_logging(args.debug)
+
     sim = Simulator(WIDTH, HEIGHT)
     config = MapConfig(num_rooms=3, num_victims=5, min_room_length=4, min_room_width=4, max_room_length=7, max_room_width=7, max_tunnel_thickness=1)
     sim.generate_ground_truth(config, 210577037)
@@ -19,15 +38,15 @@ def main():
     # agent1 = Agent("mpc", 0, 1, WIDTH, HEIGHT, 0.05, 0.9, 4, False)
     sim.add_agent(agent1)
 
-    visualize_grid_gen(sim.ground_truth.traversability, sim.ground_truth.agents, 
-                       sim.ground_truth.victims, sim.ground_truth.vulnerability,
-                       sim.ground_truth.fire)
+    # visualize_grid_gen(sim.ground_truth.traversability, sim.ground_truth.agents, 
+    #                    sim.ground_truth.victims, sim.ground_truth.vulnerability,
+    #                    sim.ground_truth.fire)
 
-    print("Running Simulation steps...")
-    history = sim.run(700) 
+    logger.info("Running Simulation steps...")
+    history = sim.run(100) 
 
-    print("Launching Visualizer...")
-    viz = Visualizer(history, 1000, 1000)
+    logger.info("Launching Visualizer...")
+    viz = Visualizer(history, 800, 800)
     viz.run()
 
 if __name__ == "__main__":
