@@ -18,6 +18,7 @@ class Simulator:
         self.ground_truth = State(width, height)
         self.fire_manager: FireManager = FireManager(width, height, 0.0, 0) #? Start with a non-spreading fire manager, wondering if it is the right way
         self.metrics = Metric()
+        self.tripping = True
 
     def add_agent(self, agent: Agent) -> None:
         """
@@ -46,7 +47,10 @@ class Simulator:
         intents = self._collect_intents()
         self._resolve_agent_conflicts(intents)
         self._commit_moves(intents)
-        self._perform_trips()
+
+        if self.tripping:
+            self._perform_trips()
+
         self._apply_vulnerability_damage()
         
         for agent in self.agents:
