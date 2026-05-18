@@ -1,3 +1,6 @@
+import logging
+import argparse
+
 from .simulator import Simulator, MapConfig, visualize_grid_gen
 from .agents.mpc import MpcAgent
 from .agents.tmpc import TmpcAgent
@@ -10,7 +13,23 @@ import matplotlib.pyplot as plt
 WIDTH = 35
 HEIGHT = 35
 
+logger = logging.getLogger(__name__)
+
+def setup_logging(is_debug: bool):
+    """Configures the global logging level and format."""
+    log_level = logging.DEBUG if is_debug else logging.INFO
+
+    logging.basicConfig(
+        level=log_level,
+        format='%(levelname)s - %(message)s',
+    )
+
 def main():
+    parser = argparse.ArgumentParser(description="Run the search and rescue simulation.")
+    parser.add_argument('--debug', action='store_true', help="Enable debug logging")
+    args = parser.parse_args()
+    setup_logging(args.debug)
+
     sim = Simulator(WIDTH, HEIGHT)
     config = MapConfig(num_rooms=10, num_victims=15, min_room_length=5, min_room_width=5, max_room_length=10, max_room_width=10, max_tunnel_thickness=2, fire_spread_rate=0.05, fire_duration=10, initial_fire_points=2)
     sim.generate_ground_truth(config)
@@ -29,18 +48,12 @@ def main():
     print("Running Simulation steps...")
     history = sim.run(500)
 
-    # print(agent1.closest_unexplored())
-    # distances_end = closest_unexplored(agent1.world_height, agent1.world_width, agent1.explored, agent1.perception.traversability.matrix, agent1.perception.victims.matrix)
-
     # plt.matshow(agent1._closest_unexplored())
     # plt.show()
 
-    print("Launching Visualizer...")
-    viz = Visualizer(history, 1200, 1200)
+    logger.info("Launching Visualizer...")
+    viz = Visualizer(history, 800, 800)
     viz.run()
-
-    # viz = Visualizer.from_file("saved_runs/private\sim_20260514_160007_127steps.pkl", 2000, 2000)
-    # viz.run()
 
 if __name__ == "__main__":
     main()

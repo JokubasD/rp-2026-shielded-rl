@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -10,6 +11,8 @@ from .fire_manager import FireManager
 from .constants import *
 from .metric import Metric
 
+logger = logging.getLogger(__name__)
+
 class Simulator:
     def __init__(self, width: int, height: int):
         self.width = width
@@ -18,6 +21,7 @@ class Simulator:
         self.ground_truth = State(width, height)
         self.fire_manager: FireManager = FireManager(width, height, 0.0, 0) #? Start with a non-spreading fire manager, wondering if it is the right way
         self.metrics = Metric()
+        self.tripping = True
 
     def add_agent(self, agent: Agent) -> None:
         """
@@ -46,7 +50,10 @@ class Simulator:
         intents = self._collect_intents()
         self._resolve_agent_conflicts(intents)
         self._commit_moves(intents)
-        self._perform_trips()
+
+        if self.tripping:
+            self._perform_trips()
+
         self._apply_vulnerability_damage()
         
         # Perform environment actions (firespread, etc.)
@@ -90,7 +97,7 @@ class Simulator:
 
         for _ in range(steps):
             # Record steps
-            print("Step", _, "=========================")
+            logger.info("Step %d =========================", _)
             step_result = self.step()
             for i in range(len(step_result)):
                 record[i].append(step_result[i])
@@ -301,7 +308,7 @@ class Simulator:
             config = MapConfig()
         if seed is None:
             seed = (int) (np.random.random() * 1_000_000_000)
-        print(f"Using seed {seed} to generate the map.")
+        logger.info(f"Using seed {seed} to generate the map.")
         np.random.seed(seed)
         # generates and sets the 2D grid with agent and victims, currently with preset values.
         self.ground_truth.traversability.matrix, rooms, tunnels = _generate_traversability_matrix(self.width, self.height, 
