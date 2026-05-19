@@ -277,14 +277,20 @@ class Simulator:
             intended_x, intended_y = agent.x + dx[direction], agent.y + dy[direction]
             
             # Check for collisions
-            is_wall = self.ground_truth.traversability[intended_y][intended_x] == TraversabilityLevel.UNTRAVERSIBLE
             is_out_of_bounds = not(0 < intended_x < self.width and 0 < intended_y < self.height)
-            if is_wall or is_out_of_bounds:
+            if is_out_of_bounds:
                 self.metrics.record_terrain_collision(agent)
                 continue
+
+            is_wall = self.ground_truth.traversability[intended_y][intended_x] == TraversabilityLevel.UNTRAVERSIBLE
+            if is_wall:
+                self.metrics.record_terrain_collision(agent)
+                continue
+
             if self.ground_truth.agents[intended_y][intended_x] == 1:
                 self.metrics.record_inter_agent_collision(agent)
                 continue
+            
             if self.ground_truth.victims[intended_y][intended_x] == VictimPresence.PRESENT:
                 self.metrics.record_victim_collision(agent)
                 continue
