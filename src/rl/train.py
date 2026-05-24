@@ -1,8 +1,6 @@
-"""Minimal sanity PPO training for the pure-RL baseline.
-
-Single environment, small CNN over the perception grid, ~50k steps. The goal
-is only to confirm the learning loop turns and reward trends up — not a final
-run. Vectorized envs, eval callbacks, checkpoints and configs come later
+"""
+Minimal sanity PPO training for the pure-RL baseline. 8 parallel envs + reward 
+normalization, small CNN over the perception grid, ~500k steps. 
 """
 
 import os
@@ -10,8 +8,9 @@ import os
 import torch
 import torch.nn as nn
 from stable_baselines3 import PPO
-from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 
 from src.rl.env import SaREnv
 
@@ -40,13 +39,16 @@ class GridCNN(BaseFeaturesExtractor):
                                                   # -> (B, features_dim) output for the policy/value net
 
 
-# TODO: add eval callback, checkpoints, config, maybe vectorized envs if not too much hassle.
-def main(total_timesteps: int = 50_000):
-    env = Monitor(SaREnv())
+# TODO: add eval callback, checkpoints
+def main(total_timesteps: int = 500_000, n_envs: int = 8):
+    # 8 parallel envs in subprocesses: more data/sec and lower-variance gradients.
+    vec_env = make_vec_env(SaREnv, n_envs=n_envs, vec_env_cls=SubprocVecEnv)
+    # Normalize the reward stream only (obs already in [0, 1])
+    vec_env = VecNormalize(vec_env, norm_obs=False, norm_reward=True)
 
     model = PPO(
         "MlpPolicy", 
-        env,
+        vec_env,
         policy_kwargs=dict(
             features_extractor_class=GridCNN,
             features_extractor_kwargs=dict(features_dim=256),
@@ -63,7 +65,8 @@ def main(total_timesteps: int = 50_000):
 
     os.makedirs("runs", exist_ok=True)
     model.save("runs/ppo_sanity")
-    print("saved model to runs/ppo_sanity.zip")
+    vec_env.save("runs/vecnormalize.pkl")
+    print("saved model + vecnormalize stats to runs/")
 
 
 if __name__ == "__main__":
