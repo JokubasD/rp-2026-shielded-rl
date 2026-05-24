@@ -180,7 +180,7 @@ class SaREnv(gym.Env):
             "terrain_collisions": int(curr.terrain_collisions.get(self.agent, 0)),
             "victim_collisions": int(curr.victim_collisions.get(self.agent, 0)),
             "damage": int(curr.damage.get(self.agent, 0)),
-            "steps_taken": int(curr.steps_taken),
+            "steps_taken": int(curr.step),
         }
 
 
