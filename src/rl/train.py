@@ -10,9 +10,9 @@ import torch.nn as nn
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecFrameStack, VecNormalize
 
-from src.rl.env import SaREnv
+from src.rl.env import SaREnv, N_STACK
 
 
 class GridCNN(BaseFeaturesExtractor):
@@ -45,6 +45,9 @@ def main(total_timesteps: int = 500_000, n_envs: int = 8):
     vec_env = make_vec_env(SaREnv, n_envs=n_envs, vec_env_cls=SubprocVecEnv)
     # Normalize the reward stream only (obs already in [0, 1])
     vec_env = VecNormalize(vec_env, norm_obs=False, norm_reward=True)
+    # Frame-stack the last N_STACK observations along the channel axis. SB3's
+    # recommended POMDP baseline -- gives the policy temporal context cheaply.
+    vec_env = VecFrameStack(vec_env, n_stack=N_STACK, channels_order="first")
 
     model = PPO(
         "MlpPolicy", 
@@ -56,9 +59,10 @@ def main(total_timesteps: int = 500_000, n_envs: int = 8):
         ),
         n_steps=1024,
         batch_size=64,
-        ent_coef=0.01,
+        ent_coef=0.05,  # bumped from 0.01: more exploration to escape "sit and wait" basin
         verbose=1,
         seed=0,
+        device="auto",  # picks GPU when available, falls back to CPU
     )
 
     model.learn(total_timesteps=total_timesteps)
@@ -70,4 +74,7 @@ def main(total_timesteps: int = 500_000, n_envs: int = 8):
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    # Allow overriding total_timesteps from CLI: `python -m src.rl.train 2000000`
+    steps = int(sys.argv[1]) if len(sys.argv) > 1 else 500_000
+    main(total_timesteps=steps)

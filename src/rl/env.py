@@ -14,6 +14,30 @@ from src.rl.reward import RewardWeights, compute_reward
 
 
 N_CHANNELS = 10
+N_STACK = 4  # frame-stack size for the policy (SB3 recommended approach for POMDPs)
+
+
+def build_observation(agent) -> np.ndarray:
+    """Build the (N_CHANNELS, H, W) observation tensor from an agent's belief.
+
+    Shared by SaREnv (training) and visualization/inference scripts so the
+    policy always receives observations in the exact layout it trained on.
+    """
+    p = agent.perception
+    h, w = agent.world_height, agent.world_width
+    obs = np.zeros((N_CHANNELS, h, w), dtype=np.float32)
+    obs[0] = p.traversability.matrix.astype(np.float32)
+    obs[1] = p.vulnerability.matrix.astype(np.float32)
+    obs[2] = p.victims.matrix.astype(np.float32)
+    obs[3] = p.agents.matrix.astype(np.float32)
+    fire = p.fire.matrix.astype(int)
+    obs[4] = (fire == FireLevel.SAFE).astype(np.float32)
+    obs[5] = (fire == FireLevel.FLAMMABLE).astype(np.float32)
+    obs[6] = (fire == FireLevel.BURNING).astype(np.float32)
+    obs[7] = (fire == FireLevel.BURNT).astype(np.float32)
+    obs[8] = p.confidence.matrix.astype(np.float32)
+    obs[9] = agent.explored.astype(np.float32)
+    return obs
 
 
 class SaREnv(gym.Env):
@@ -41,13 +65,15 @@ class SaREnv(gym.Env):
         super().__init__()
         self.width = width
         self.height = height
+        # "Balanced" 40x40 config: enough rooms to fill the grid, slow fire, light hazards.
         self.config = config or MapConfig(
-            num_rooms=3,
-            num_victims=5,
-            num_agents=0,
-            min_room_length=4, min_room_width=4,
-            max_room_length=7, max_room_width=7,
-            max_tunnel_thickness=1,
+            num_rooms=8, num_victims=3, num_agents=0,
+            min_room_width=5, max_room_width=10,
+            min_room_length=5, max_room_length=10,
+            max_tunnel_thickness=2,
+            initial_fire_points=1, fire_spread_rate=0.1, fire_duration=8,
+            room_vulnerability_probability=0.25, room_vulnerability_severity=0.3,
+            tunnel_vulnerability_probability=0.2, tunnel_vulnerability_severity=0.3,
         )
         if self.config.num_agents != 0:
             # The wrapper places its own RLAgent; auto-placement would put
@@ -73,6 +99,8 @@ class SaREnv(gym.Env):
         self.agent: RLAgent | None = None
         self.step_count = 0
         self._prev_explored = 0
+        # Per-episode visit mask for count-based intrinsic motivation (Bellemare 2016, Andres 2025).
+        self.visited: np.ndarray | None = None
 
     def reset(self, *, seed: int | None = None, options=None):
         super().reset(seed=seed)
@@ -91,6 +119,10 @@ class SaREnv(gym.Env):
         self.agent.scan(self.sim.ground_truth)
         self.step_count = 0
         self._prev_explored = int(self.agent.explored.sum())
+        # Reset visit mask; mark the start cell as already visited so the first
+        # novelty bonus is only earned when the agent steps onto a NEW cell.
+        self.visited = np.zeros((self.height, self.width), dtype=bool)
+        self.visited[self.agent.y, self.agent.x] = True
         return self._build_obs(), self._build_info(curr=None)
 
     def step(self, action):
@@ -125,6 +157,11 @@ class SaREnv(gym.Env):
         v_at = float(self.sim.ground_truth.vulnerability[self.agent.y][self.agent.x])
         f_at = int(self.sim.ground_truth.fire[self.agent.y][self.agent.x])
 
+        # Count-based novelty: is the agent on a cell it has never occupied this episode?
+        cell = (self.agent.y, self.agent.x)
+        first_visit = not bool(self.visited[cell])
+        self.visited[cell] = True
+
         terminated = curr.outcome == RunOutcome.SUCCESS
         # hit the step budget (reported in gymnasium's 4th step() return value)
         timeout = (self.step_count >= self.max_episode_steps) and not terminated
@@ -137,6 +174,7 @@ class SaREnv(gym.Env):
             delta_victim_coll=delta_vict,
             vulnerability_at_agent=v_at,
             fire_at_agent=f_at,
+            first_visit=first_visit,
             terminated=terminated,
             timeout=timeout,
             weights=self.weights,
@@ -145,20 +183,7 @@ class SaREnv(gym.Env):
         return self._build_obs(), reward, terminated, timeout, self._build_info(curr=curr)
 
     def _build_obs(self) -> np.ndarray:
-        p = self.agent.perception
-        obs = np.zeros((N_CHANNELS, self.height, self.width), dtype=np.float32)
-        obs[0] = p.traversability.matrix.astype(np.float32)
-        obs[1] = p.vulnerability.matrix.astype(np.float32)
-        obs[2] = p.victims.matrix.astype(np.float32)
-        obs[3] = p.agents.matrix.astype(np.float32)
-        fire = p.fire.matrix.astype(int)
-        obs[4] = (fire == FireLevel.SAFE).astype(np.float32)
-        obs[5] = (fire == FireLevel.FLAMMABLE).astype(np.float32)
-        obs[6] = (fire == FireLevel.BURNING).astype(np.float32)
-        obs[7] = (fire == FireLevel.BURNT).astype(np.float32)
-        obs[8] = p.confidence.matrix.astype(np.float32)
-        obs[9] = self.agent.explored.astype(np.float32)
-        return obs
+        return build_observation(self.agent)
 
     def _build_info(self, curr) -> dict:
         if curr is None:

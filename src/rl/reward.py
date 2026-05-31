@@ -6,16 +6,22 @@ from src.constants import FireLevel
 @dataclass
 class RewardWeights:
     """Pure-RL weights"""
-    w_v: float = 10.0          # + per new victim found
-    w_e: float = 1.0           # + newly-explored traversable cells
-    w_s: float = 0.01          # - per step
-    w_c_t: float = 0.1         # - terrain collision 
-    w_c_v: float = 1.0         # - victim collision
-    w_h_v: float = 0.5         # - vulnerability of current cell
-    w_h_f_flam: float = 0.1    # - Flammable
-    w_h_f_burn: float = 5.0    # - Burning 
-    w_succ: float = 20.0       # + on success
-    w_tout: float = 5.0        # - on timeout
+    # Task-only weights: the pure-RL baseline is intentionally hazard-blind.
+    # Safety (fire, vulnerability) is the shield's job in the shielded variant.
+    w_v: float = 30.0          # + per new victim found
+    w_e: float = 15.0          # + newly-explored traversable cells (boosted: drives search)
+    w_s: float = 0.005         # - per step (encourages speed)
+    w_c_t: float = 0.1         # - terrain collision (anti-walking-into-walls)
+    w_c_v: float = 1.0         # - victim collision (don't crush victims)
+    w_h_v: float = 0.0         # - vulnerability  -> ZEROED, shield handles
+    w_h_f_flam: float = 0.0    # - Flammable      -> ZEROED, shield handles
+    w_h_f_burn: float = 0.0    # - Burning        -> ZEROED, shield handles
+    w_succ: float = 50.0       # + on success (big bonus for solving the task)
+    w_tout: float = 15.0       # - on timeout
+    # Count-based intrinsic motivation: bonus the first time the agent
+    # physically steps on a cell each episode. Movement-conditional, so it
+    # directly breaks the "sit and wait" basin (Bellemare 2016; Andres 2025).
+    w_novelty: float = 0.3
 
 
 def compute_reward(
@@ -27,6 +33,7 @@ def compute_reward(
     delta_victim_coll: int,
     vulnerability_at_agent: float,
     fire_at_agent: int,
+    first_visit: bool,
     terminated: bool,
     timeout: bool,
     weights: RewardWeights = RewardWeights(),
@@ -51,4 +58,5 @@ def compute_reward(
         - fire_term
         + (weights.w_succ if terminated else 0.0)
         - (weights.w_tout if timeout else 0.0)
+        + (weights.w_novelty if first_visit else 0.0)
     )
