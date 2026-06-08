@@ -23,6 +23,7 @@ Usage: python run_sweep_v5.py            # 20 -> 25 -> 30
        python run_sweep_v5.py --quick    # 20x20 only (fast confidence check)
 """
 import gc
+import os
 import sys
 import time
 from dataclasses import asdict
@@ -45,6 +46,10 @@ from src.rl.configs import sar_config
 # shot at >80% full success while still being a rich map. Bump to 10 if you'd
 # rather headline victims_found_frac and show a busier map.
 NUM_VICTIMS = 6
+
+# Parallel envs. Default 32; set N_ENVS=64 on a 64-core box for ~2x throughput
+# (the env simulation is the bottleneck, so more cores ~= proportionally faster).
+N_ENVS = int(os.environ.get("N_ENVS", "32"))
 
 # v5 reward: global coverage potential + terminal coverage bonus; farmable terms off.
 V5_REWARD = RewardWeights(
@@ -96,7 +101,7 @@ def make_ppo(vec_env, seed):
 
 
 def run_one(label, seed, total_timesteps, size, max_episode_steps,
-            num_victims=NUM_VICTIMS, n_envs=32, n_stack=N_STACK):
+            num_victims=NUM_VICTIMS, n_envs=N_ENVS, n_stack=N_STACK):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out = Path("runs") / f"{label}_seed{seed}_{ts}"
     out.mkdir(parents=True, exist_ok=True)
