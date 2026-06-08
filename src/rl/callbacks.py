@@ -1,4 +1,4 @@
-"""Training callbacks: task-metric logging (+ best-by-success checkpoint) and entropy-coef annealing."""
+"""Training callbacks: task-metric logging + best-by-success checkpoint."""
 from collections import deque
 from pathlib import Path
 
