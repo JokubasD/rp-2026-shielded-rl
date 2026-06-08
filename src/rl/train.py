@@ -1,7 +1,4 @@
-"""
-Minimal sanity PPO training for the pure-RL baseline. 8 parallel envs + reward 
-normalization, small CNN over the perception grid, ~500k steps. 
-"""
+"""Minimal PPO training for the pure-RL baseline: parallel envs, reward normalization, CNN over the perception grid."""
 
 import os
 
@@ -42,7 +39,11 @@ class GridCNN(BaseFeaturesExtractor):
 # TODO: add eval callback, checkpoints
 def main(total_timesteps: int = 500_000, n_envs: int = 8):
     # 8 parallel envs in subprocesses: more data/sec and lower-variance gradients.
-    vec_env = make_vec_env(SaREnv, n_envs=n_envs, vec_env_cls=SubprocVecEnv)
+    # info_keywords surface task progress so SuccessRateCallback can log it.
+    vec_env = make_vec_env(
+        SaREnv, n_envs=n_envs, vec_env_cls=SubprocVecEnv,
+        monitor_kwargs=dict(info_keywords=("outcome", "victims_found", "total_victims")),
+    )
     # Normalize the reward stream only (obs already in [0, 1])
     vec_env = VecNormalize(vec_env, norm_obs=False, norm_reward=True)
     # Frame-stack the last N_STACK observations along the channel axis. SB3's
@@ -65,7 +66,8 @@ def main(total_timesteps: int = 500_000, n_envs: int = 8):
         device="auto",  # picks GPU when available, falls back to CPU
     )
 
-    model.learn(total_timesteps=total_timesteps)
+    from src.rl.callbacks import SuccessRateCallback
+    model.learn(total_timesteps=total_timesteps, callback=SuccessRateCallback())
 
     os.makedirs("runs", exist_ok=True)
     model.save("runs/ppo_sanity")
