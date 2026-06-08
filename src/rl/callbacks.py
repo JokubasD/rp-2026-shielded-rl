@@ -14,6 +14,7 @@ class SuccessRateCallback(BaseCallback):
         super().__init__(verbose)
         self._succ: deque = deque(maxlen=window)
         self._vf: deque = deque(maxlen=window)
+        self._cov: deque = deque(maxlen=window)
         self.best_save_dir = Path(best_save_dir) if best_save_dir else None
         self.vecnormalize = vecnormalize
         self.best = -1.0
@@ -28,10 +29,12 @@ class SuccessRateCallback(BaseCallback):
             total = ep.get("total_victims", info.get("total_victims", 0)) or 0
             found = ep.get("victims_found", info.get("victims_found", 0))
             self._vf.append(found / total if total > 0 else 0.0)
+            self._cov.append(float(ep.get("area_explored", info.get("area_explored", 0.0))))
         if self._succ:
             sr = float(np.mean(self._succ))
             self.logger.record("rollout/success_rate", sr)
             self.logger.record("rollout/victims_found_frac", float(np.mean(self._vf)))
+            self.logger.record("rollout/coverage_frac", float(np.mean(self._cov)))
             # Save best-by-success once a full window of episodes has accumulated.
             if (self.best_save_dir is not None
                     and len(self._succ) == self._succ.maxlen

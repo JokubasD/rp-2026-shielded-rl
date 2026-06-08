@@ -60,7 +60,7 @@ V5_REWARD = RewardWeights(
     w_phi=W_PHI, w_cov_term=W_COV, use_coverage_potential=True,
 )
 
-MONITOR_KWARGS = dict(info_keywords=("outcome", "victims_found", "total_victims"))
+MONITOR_KWARGS = dict(info_keywords=("outcome", "victims_found", "total_victims", "area_explored"))
 
 
 class Tee:
