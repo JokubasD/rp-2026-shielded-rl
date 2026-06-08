@@ -31,3 +31,24 @@ def nearest_frontier_distance(
                 visited[ny, nx] = True
                 q.append((ny, nx, d + 1))
     return 0
+
+
+def frontier_distance_field(explored: np.ndarray, traversable: np.ndarray) -> np.ndarray:
+    """Normalised [0,1] BFS distance-to-nearest-unexplored field from belief (the MPC's frontier signal, as an obs channel)."""
+    h, w = explored.shape
+    dist = np.full((h, w), -1, dtype=np.int32)
+    q: deque = deque()
+    ys, xs = np.nonzero(~explored)              # unexplored cells are the BFS sources
+    for y, x in zip(ys.tolist(), xs.tolist()):
+        dist[y, x] = 0
+        q.append((y, x))
+    while q:                                    # expand through explored, traversable cells
+        cy, cx = q.popleft()
+        for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            ny, nx = cy + dy, cx + dx
+            if (0 <= ny < h and 0 <= nx < w and dist[ny, nx] == -1
+                    and explored[ny, nx] and traversable[ny, nx]):
+                dist[ny, nx] = dist[cy, cx] + 1
+                q.append((ny, nx))
+    field = np.where(dist < 0, h + w, dist).astype(np.float32) / (h + w)
+    return np.clip(field, 0.0, 1.0)

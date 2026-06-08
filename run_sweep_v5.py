@@ -42,21 +42,20 @@ from src.rl.callbacks import SuccessRateCallback, EntCoefAnneal
 from src.rl.configs import sar_config
 
 
-# Quite a few victims, but not so many that "find ALL" is hopeless. 6 gives a real
-# shot at >80% full success while still being a rich map. Bump to 10 if you'd
-# rather headline victims_found_frac and show a busier map.
-NUM_VICTIMS = 6
-
-# Parallel envs. Default 32; set N_ENVS=64 on a 64-core box for ~2x throughput
-# (the env simulation is the bottleneck, so more cores ~= proportionally faster).
-N_ENVS = int(os.environ.get("N_ENVS", "32"))
+# Env-var knobs for fast tuning, e.g. HORIZON=500 W_PHI=15 NUM_VICTIMS=4 python run_sweep_v5.py --test
+NUM_VICTIMS = int(os.environ.get("NUM_VICTIMS", "6"))
+N_ENVS = int(os.environ.get("N_ENVS", "32"))       # parallel envs (set 64 on a 64-core box)
+W_PHI = float(os.environ.get("W_PHI", "8"))         # coverage-potential strength
+W_COV = float(os.environ.get("W_COV_TERM", "20"))   # terminal coverage bonus
+HORIZON = int(os.environ.get("HORIZON", "0"))       # >0 overrides the per-map episode budget
+TEST_STEPS = int(os.environ.get("TEST_STEPS", "1500000"))  # steps for a --test run
 
 # v5 reward: global coverage potential + terminal coverage bonus; farmable terms off.
 V5_REWARD = RewardWeights(
     w_v=10.0, w_e=0.0, w_s=0.005, w_c_t=0.1, w_c_v=1.0,
     w_h_v=0.0, w_h_f_flam=0.0, w_h_f_burn=0.0,
     w_succ=50.0, w_tout=0.0, w_novelty=0.0,
-    w_phi=8.0, w_cov_term=20.0, use_coverage_potential=True,
+    w_phi=W_PHI, w_cov_term=W_COV, use_coverage_potential=True,
 )
 
 MONITOR_KWARGS = dict(info_keywords=("outcome", "victims_found", "total_victims"))
@@ -102,6 +101,8 @@ def make_ppo(vec_env, seed):
 
 def run_one(label, seed, total_timesteps, size, max_episode_steps,
             num_victims=NUM_VICTIMS, n_envs=N_ENVS, n_stack=N_STACK):
+    if HORIZON > 0:
+        max_episode_steps = HORIZON
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out = Path("runs") / f"{label}_seed{seed}_{ts}"
     out.mkdir(parents=True, exist_ok=True)
@@ -158,6 +159,8 @@ SWEEP = [
     dict(label="v5_30x30", seed=0, total_timesteps=4_000_000, size=30, max_episode_steps=500),
 ]
 QUICK = SWEEP[:1]  # 20x20 only -- the fast confidence check
+# Fast single 20x20 run for hyperparameter experiments (~5 min at 1.5M steps).
+TEST = [dict(label="v5_test", seed=0, total_timesteps=TEST_STEPS, size=20, max_episode_steps=300)]
 
 
 def main(sweep=SWEEP):
@@ -176,4 +179,9 @@ def main(sweep=SWEEP):
 
 
 if __name__ == "__main__":
-    main(QUICK if "--quick" in sys.argv else SWEEP)
+    if "--test" in sys.argv:
+        main(TEST)
+    elif "--quick" in sys.argv:
+        main(QUICK)
+    else:
+        main(SWEEP)

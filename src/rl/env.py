@@ -12,10 +12,10 @@ from src.constants import (
 )
 from src.simulator import Simulator
 from src.rl.reward import RewardWeights, compute_reward
-from src.rl.frontier import nearest_frontier_distance
+from src.rl.frontier import nearest_frontier_distance, frontier_distance_field
 
 
-N_CHANNELS = 10
+N_CHANNELS = 11
 N_STACK = 4  # frame-stack size for the policy (SB3 recommended approach for POMDPs)
 
 
@@ -39,6 +39,9 @@ def build_observation(agent) -> np.ndarray:
     obs[7] = (fire == FireLevel.BURNT).astype(np.float32)
     obs[8] = p.confidence.matrix.astype(np.float32)
     obs[9] = agent.explored.astype(np.float32)
+    # Distance-to-nearest-unexplored field (the MPC's frontier signal, from belief).
+    trav = (p.traversability.matrix == TraversabilityLevel.TRAVERSIBLE)
+    obs[10] = frontier_distance_field(agent.explored, trav)
     return obs
 
 
