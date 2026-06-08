@@ -9,6 +9,7 @@ from src.constants import (
     MapConfig,
     RunOutcome,
     TraversabilityLevel,
+    VictimPresence,
 )
 from src.simulator import Simulator
 from src.rl.reward import RewardWeights, compute_reward
@@ -68,6 +69,7 @@ class SaREnv(gym.Env):
         reward_weights: RewardWeights | None = None,
         gamma: float = 0.99,
         ego_crop: int = 0,
+        random_start: bool = False,
     ):
         super().__init__()
         self.width = width
@@ -99,6 +101,8 @@ class SaREnv(gym.Env):
         self.gamma = gamma
         # Egocentric crop size (odd, agent-centred). 0 = full-grid observation.
         self.ego_crop = ego_crop
+        # Random traversable start cell each reset (breaks fixed-corner overfit).
+        self.random_start = random_start
 
         obs_h, obs_w = (ego_crop, ego_crop) if ego_crop > 0 else (height, width)
         self.observation_space = spaces.Box(
@@ -119,10 +123,19 @@ class SaREnv(gym.Env):
         super().reset(seed=seed)
         self.sim = Simulator(self.width, self.height)
         self.sim.generate_ground_truth(self.config, seed=seed)
+        sx, sy = self.start_x, self.start_y
+        if self.random_start:
+            # Pick a uniformly random traversable, victim-free cell as the start.
+            trav = (self.sim.ground_truth.traversability.matrix == TraversabilityLevel.TRAVERSIBLE)
+            free = trav & (self.sim.ground_truth.victims.matrix != VictimPresence.PRESENT)
+            ys, xs = np.nonzero(free)
+            if len(xs) > 0:
+                i = int(self.np_random.integers(len(xs)))
+                sx, sy = int(xs[i]), int(ys[i])
         self.agent = RLAgent(
             name="rl",
-            x=self.start_x,
-            y=self.start_y,
+            x=sx,
+            y=sy,
             width=self.width,
             height=self.height,
             **self.agent_kwargs,

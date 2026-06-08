@@ -50,6 +50,8 @@ W_COV = float(os.environ.get("W_COV_TERM", "20"))   # terminal coverage bonus
 HORIZON = int(os.environ.get("HORIZON", "0"))       # >0 overrides the per-map episode budget
 EGO_CROP = int(os.environ.get("EGO_CROP", "0"))     # >0 = agent-centred KxK crop (e.g. 39 for 20x20)
 CORRIDOR = int(os.environ.get("CORRIDOR", "1"))     # tunnel width (3 = wide, easy to navigate)
+GAMMA = float(os.environ.get("GAMMA", "0.99"))      # discount; 0.997 -> eff. horizon ~333 vs ~100
+RANDOM_START = os.environ.get("RANDOM_START", "0") == "1"  # random traversable start cell each reset
 TEST_STEPS = int(os.environ.get("TEST_STEPS", "1500000"))  # steps for a --test run
 
 # v5 reward: global coverage potential + terminal coverage bonus; farmable terms off.
@@ -92,7 +94,7 @@ def make_ppo(vec_env, seed):
         ),
         learning_rate=lin(2.5e-4, 0.0),  # decay to 0 -> settles instead of oscillating
         n_steps=1024, batch_size=2048, n_epochs=4,  # fewer epochs + big batch = smaller steps
-        gamma=0.99, gae_lambda=0.95,
+        gamma=GAMMA, gae_lambda=0.95,
         clip_range=0.15, clip_range_vf=0.2,          # tighter trust region + clipped value
         ent_coef=0.03, vf_coef=0.5, max_grad_norm=0.5,
         target_kl=0.02,                              # THE fix: early-stop runaway updates
@@ -111,7 +113,8 @@ def run_one(label, seed, total_timesteps, size, max_episode_steps,
 
     cfg = dict(label=label, seed=seed, total_timesteps=total_timesteps,
                size=size, max_episode_steps=max_episode_steps, num_victims=num_victims,
-               n_envs=n_envs, n_stack=n_stack, reward=asdict(V5_REWARD), stable=True)
+               n_envs=n_envs, n_stack=n_stack, gamma=GAMMA, random_start=RANDOM_START,
+               corridor=CORRIDOR, ego_crop=EGO_CROP, reward=asdict(V5_REWARD), stable=True)
     (out / "config.txt").write_text(repr(cfg))
 
     log_file = open(out / "train.log", "w", buffering=1)
@@ -121,10 +124,11 @@ def run_one(label, seed, total_timesteps, size, max_episode_steps,
         print(f"[v5] config: {cfg}", flush=True)
         env_kwargs = dict(width=size, height=size, max_episode_steps=max_episode_steps,
                           config=sar_config(size, num_victims=num_victims, corridor=CORRIDOR),
-                          reward_weights=V5_REWARD, ego_crop=EGO_CROP)
+                          reward_weights=V5_REWARD, ego_crop=EGO_CROP,
+                          gamma=GAMMA, random_start=RANDOM_START)
         vec_env = make_vec_env(SaREnv, n_envs=n_envs, vec_env_cls=SubprocVecEnv,
                                env_kwargs=env_kwargs, monitor_kwargs=MONITOR_KWARGS)
-        vec_env = VecNormalize(vec_env, norm_obs=False, norm_reward=True)
+        vec_env = VecNormalize(vec_env, norm_obs=False, norm_reward=True, gamma=GAMMA)
         vnorm = vec_env
         if n_stack > 1:
             vec_env = VecFrameStack(vec_env, n_stack=n_stack, channels_order="first")
