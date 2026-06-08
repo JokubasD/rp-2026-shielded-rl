@@ -67,6 +67,7 @@ class SaREnv(gym.Env):
         agent_scan_falloff: bool = True,
         reward_weights: RewardWeights | None = None,
         gamma: float = 0.99,
+        ego_crop: int = 0,
     ):
         super().__init__()
         self.width = width
@@ -96,9 +97,12 @@ class SaREnv(gym.Env):
         self.weights = reward_weights or RewardWeights()
         # Discount factor for potential-based shaping.
         self.gamma = gamma
+        # Egocentric crop size (odd, agent-centred). 0 = full-grid observation.
+        self.ego_crop = ego_crop
 
+        obs_h, obs_w = (ego_crop, ego_crop) if ego_crop > 0 else (height, width)
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(N_CHANNELS, height, width), dtype=np.float32
+            low=0.0, high=1.0, shape=(N_CHANNELS, obs_h, obs_w), dtype=np.float32
         )
         self.action_space = spaces.Discrete(len(AgentAction))
 
@@ -209,7 +213,24 @@ class SaREnv(gym.Env):
         return self._build_obs(), reward, terminated, timeout, self._build_info(curr=curr)
 
     def _build_obs(self) -> np.ndarray:
-        return build_observation(self.agent)
+        obs = build_observation(self.agent)
+        if self.ego_crop > 0:
+            obs = self._egocentric_crop(obs)
+        return obs
+
+    def _egocentric_crop(self, obs: np.ndarray) -> np.ndarray:
+        """Crop a fixed K x K window centred on the agent (translation-invariant);
+        out-of-bounds padded as wall/explored/far-frontier so edges look like solid bounds.
+        """
+        k = self.ego_crop
+        r = k // 2
+        pad = np.zeros(N_CHANNELS, dtype=np.float32)
+        pad[0] = pad[9] = pad[10] = 1.0  # traversability(wall), explored, frontier-far
+        padded = np.stack([
+            np.pad(obs[c], r, constant_values=float(pad[c])) for c in range(N_CHANNELS)
+        ])
+        ay, ax = self.agent.y, self.agent.x
+        return padded[:, ay:ay + k, ax:ax + k].astype(np.float32)
 
     def _frontier_potential(self) -> float:
         """Following Ng-1999, compute a potential using BFS to find the frontier distance
