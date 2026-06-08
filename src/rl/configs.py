@@ -2,8 +2,8 @@
 from src.constants import MapConfig
 
 
-def sar_config(size: int, num_victims: int = 10) -> MapConfig:
-    """Balanced, fully-connected SaR map of the given size with num_victims victims."""
+def sar_config(size: int, num_victims: int = 10, corridor: int = 1) -> MapConfig:
+    """Balanced, fully-connected SaR map of the given size, num_victims victims, corridor-wide tunnels."""
     rooms = {20: 7, 25: 10, 30: 14}.get(size, max(6, size // 3))
     return MapConfig(
         num_rooms=rooms,
@@ -12,7 +12,7 @@ def sar_config(size: int, num_victims: int = 10) -> MapConfig:
         unconnected_probability=0.0,   # everything reachable -> map is always solvable
         min_room_width=3, max_room_width=5,
         min_room_length=3, max_room_length=5,
-        min_tunnel_thickness=1, max_tunnel_thickness=1,
+        min_tunnel_thickness=corridor, max_tunnel_thickness=corridor,
         initial_fire_points=1, fire_spread_rate=0.03, fire_duration=8,
         room_vulnerability_probability=0.12, room_vulnerability_severity=0.3,
         tunnel_vulnerability_probability=0.08, tunnel_vulnerability_severity=0.3,

@@ -49,6 +49,7 @@ W_PHI = float(os.environ.get("W_PHI", "8"))         # coverage-potential strengt
 W_COV = float(os.environ.get("W_COV_TERM", "20"))   # terminal coverage bonus
 HORIZON = int(os.environ.get("HORIZON", "0"))       # >0 overrides the per-map episode budget
 EGO_CROP = int(os.environ.get("EGO_CROP", "0"))     # >0 = agent-centred KxK crop (e.g. 39 for 20x20)
+CORRIDOR = int(os.environ.get("CORRIDOR", "1"))     # tunnel width (3 = wide, easy to navigate)
 TEST_STEPS = int(os.environ.get("TEST_STEPS", "1500000"))  # steps for a --test run
 
 # v5 reward: global coverage potential + terminal coverage bonus; farmable terms off.
@@ -119,7 +120,7 @@ def run_one(label, seed, total_timesteps, size, max_episode_steps,
     try:
         print(f"[v5] config: {cfg}", flush=True)
         env_kwargs = dict(width=size, height=size, max_episode_steps=max_episode_steps,
-                          config=sar_config(size, num_victims=num_victims),
+                          config=sar_config(size, num_victims=num_victims, corridor=CORRIDOR),
                           reward_weights=V5_REWARD, ego_crop=EGO_CROP)
         vec_env = make_vec_env(SaREnv, n_envs=n_envs, vec_env_cls=SubprocVecEnv,
                                env_kwargs=env_kwargs, monitor_kwargs=MONITOR_KWARGS)
