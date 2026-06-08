@@ -380,23 +380,28 @@ def _generate_traversability_matrix(
     #? Should we store the first room in the rooms list?
 
     # create rooms and store their centers in room_seeds
+    # Reject placements that touch an existing room (1-cell wall margin) 
+    # so rooms stay DISTINCT rather than merging into blobs
+    # keep each room fully inside the grid so it is not clipped into an odd shape. 
+    # Fall back to the last candidate if no clear spot is found after a few tries, 
+    # so we always end up with n rooms
     for p in range(1, n + 1):
-        c = np.random.randint(0,x)
-        f = np.random.randint(0,y)
+        c = f = x_start = x_end = y_start = y_end = 0
+        for _attempt in range(40):
+            random_width = np.random.randint(w_min, w_max + 1)
+            random_length = np.random.randint(l_min, l_max + 1)
+            half_w, half_l = random_width // 2, random_length // 2
+            c = np.random.randint(half_w, max(half_w + 1, x - half_w))
+            f = np.random.randint(half_l, max(half_l + 1, y - half_l))
+            x_start, x_end = max(0, c - half_w), min(x, c + half_w + 1)
+            y_start, y_end = max(0, f - half_l), min(y, f + half_l + 1)
+            my0, my1 = max(0, y_start - 1), min(y, y_end + 1)
+            mx0, mx1 = max(0, x_start - 1), min(x, x_end + 1)
+            if not np.any(matrix[my0:my1, mx0:mx1] == TraversabilityLevel.TRAVERSIBLE):
+                break
 
         room_seeds[0][p] = c
         room_seeds[1][p] = f
-
-        random_width = np.random.randint(w_min, w_max + 1)
-        half_random_width = random_width // 2
-
-        random_length = np.random.randint(l_min, l_max + 1)
-        half_random_length = random_length // 2
-
-        x_start = max(0, c - half_random_width)
-        x_end = min(x, c + half_random_width + 1)
-        y_start = max(0, f - half_random_length)
-        y_end = min(y, f + half_random_length + 1)
 
         matrix[y_start:y_end, x_start:x_end] = TraversabilityLevel.TRAVERSIBLE
         rooms.append({
