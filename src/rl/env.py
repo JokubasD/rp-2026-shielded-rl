@@ -8,9 +8,11 @@ from src.constants import (
     FireLevel,
     MapConfig,
     RunOutcome,
+    TraversabilityLevel,
 )
 from src.simulator import Simulator
 from src.rl.reward import RewardWeights, compute_reward
+from src.rl.frontier import nearest_frontier_distance
 
 
 N_CHANNELS = 10
@@ -61,6 +63,7 @@ class SaREnv(gym.Env):
         agent_scan_radius: int = 3,
         agent_scan_falloff: bool = True,
         reward_weights: RewardWeights | None = None,
+        gamma: float = 0.99,
     ):
         super().__init__()
         self.width = width
@@ -76,8 +79,7 @@ class SaREnv(gym.Env):
             tunnel_vulnerability_probability=0.2, tunnel_vulnerability_severity=0.3,
         )
         if self.config.num_agents != 0:
-            # The wrapper places its own RLAgent; auto-placement would put
-            # an extra unowned agent on the grid.
+            # The wrapper places its own RLAgent.
             raise ValueError("SaREnv places its own agent; set config.num_agents=0")
 
         self.max_episode_steps = max_episode_steps
@@ -89,6 +91,8 @@ class SaREnv(gym.Env):
             scan_falloff=agent_scan_falloff,
         )
         self.weights = reward_weights or RewardWeights()
+        # Discount factor for potential-based shaping.
+        self.gamma = gamma
 
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(N_CHANNELS, height, width), dtype=np.float32
@@ -101,6 +105,8 @@ class SaREnv(gym.Env):
         self._prev_explored = 0
         # Per-episode visit mask for count-based intrinsic motivation (Bellemare 2016, Andres 2025).
         self.visited: np.ndarray | None = None
+        # Cached potential for Ng-1999 frontier shaping.
+        self._prev_phi: float = 0.0
 
     def reset(self, *, seed: int | None = None, options=None):
         super().reset(seed=seed)
@@ -123,6 +129,8 @@ class SaREnv(gym.Env):
         # novelty bonus is only earned when the agent steps onto a NEW cell.
         self.visited = np.zeros((self.height, self.width), dtype=bool)
         self.visited[self.agent.y, self.agent.x] = True
+        # Cache the starting potential for the first shaping delta.
+        self._prev_phi = self._potential()
         return self._build_obs(), self._build_info(curr=None)
 
     def step(self, action):
@@ -166,6 +174,19 @@ class SaREnv(gym.Env):
         # hit the step budget (reported in gymnasium's 4th step() return value)
         timeout = (self.step_count >= self.max_episode_steps) and not terminated
 
+        # Potential-based frontier shaping (Ng 1999). Phi is forced to 0 at
+        # terminal states (success or timeout) so the shaping cannot alter the
+        # optimal policy, only accelerate learning.
+        phi_next = 0.0 if (terminated or timeout) else self._potential()
+        shaping = self.gamma * phi_next - self._prev_phi
+        self._prev_phi = phi_next
+
+        # Map coverage at episdeo end, which drives the terminal coverage
+        # bonus, so even a timeout that covers a lot of ground teaches the agent.
+        coverage_fraction = (
+            float(curr.area_explored.get(self.agent, 0.0)) if (terminated or timeout) else 0.0
+        )
+
         reward = compute_reward(
             delta_victims=delta_victims,
             delta_explored=delta_explored,
@@ -177,6 +198,8 @@ class SaREnv(gym.Env):
             first_visit=first_visit,
             terminated=terminated,
             timeout=timeout,
+            shaping=shaping,
+            coverage_fraction=coverage_fraction,
             weights=self.weights,
         )
 
@@ -184,6 +207,40 @@ class SaREnv(gym.Env):
 
     def _build_obs(self) -> np.ndarray:
         return build_observation(self.agent)
+
+    def _frontier_potential(self) -> float:
+        """Following Ng-1999, compute a potential using BFS to find the frontier distance
+        """
+        if self.weights.w_phi == 0.0 or self.agent is None:
+            return 0.0
+        traversable = (
+            self.agent.perception.traversability.matrix == TraversabilityLevel.TRAVERSIBLE
+        )
+        d = nearest_frontier_distance(
+            self.agent.explored, traversable, self.agent.y, self.agent.x
+        )
+        return -self.weights.w_phi * d / (self.height + self.width)
+
+    def _coverage_potential(self) -> float:
+        """Phi = -w_phi * (1 - coverage), where
+        coverage is the fraction of traversable cells the agent has explored.
+        """
+        if self.weights.w_phi == 0.0 or self.agent is None or self.sim is None:
+            return 0.0
+        traversable = (
+            self.sim.ground_truth.traversability.matrix == TraversabilityLevel.TRAVERSIBLE
+        )
+        total = int(traversable.sum())
+        if total == 0:
+            return 0.0
+        explored_trav = int((self.agent.explored & traversable).sum())
+        return -self.weights.w_phi * (1.0 - explored_trav / total)
+
+    def _potential(self) -> float:
+        """Dispatch: coverage potential (v5) or nearest-frontier potential (v4)."""
+        if self.weights.use_coverage_potential:
+            return self._coverage_potential()
+        return self._frontier_potential()
 
     def _build_info(self, curr) -> dict:
         if curr is None:
@@ -211,7 +268,9 @@ class SaREnv(gym.Env):
 
 if __name__ == "__main__":
     # Smoke check: random actions for 50 steps, prove the env runs end-to-end.
-    env = SaREnv()
+    # Use the v5 coverage path here so the new shaping is exercised too.
+    env = SaREnv(reward_weights=RewardWeights(
+        w_phi=8.0, w_cov_term=20.0, use_coverage_potential=True))
     obs, info = env.reset(seed=42)
     print(
         f"obs shape: {obs.shape}, dtype: {obs.dtype}, "

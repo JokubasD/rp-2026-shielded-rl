@@ -6,7 +6,7 @@ from src.constants import FireLevel
 @dataclass
 class RewardWeights:
     """Pure-RL weights"""
-    # Task-only weights: the pure-RL baseline is intentionally hazard-blind.
+    # Task-only weights: the pure-RL baseline is hazard-blind.
     # Safety (fire, vulnerability) is the shield's job in the shielded variant.
     w_v: float = 30.0          # + per new victim found
     w_e: float = 15.0          # + newly-explored traversable cells (boosted: drives search)
@@ -22,6 +22,14 @@ class RewardWeights:
     # physically steps on a cell each episode. Movement-conditional, so it
     # directly breaks the "sit and wait" basin (Bellemare 2016; Andres 2025).
     w_novelty: float = 0.3
+    # Potential-based shaping weight (Ng, Harada & Russell, 1999). Scales the
+    # potential Phi added to the reward via F = gamma*Phi(s') - Phi(s). 0.0 off.
+    w_phi: float = 0.0
+    # Gives a bonus proportional to the coverage fraction at the end of the episode
+    w_cov_term: float = 0.0
+    # global coverage potential Phi = -w_phi*(1-coverage) 
+    # When on, set w_novelty = w_e = 0 
+    use_coverage_potential: bool = False
 
 
 def compute_reward(
@@ -36,6 +44,8 @@ def compute_reward(
     first_visit: bool,
     terminated: bool,
     timeout: bool,
+    shaping: float = 0.0,
+    coverage_fraction: float = 0.0,
     weights: RewardWeights = RewardWeights(),
 ) -> float:
     fire_term = 0.0
@@ -59,4 +69,6 @@ def compute_reward(
         + (weights.w_succ if terminated else 0.0)
         - (weights.w_tout if timeout else 0.0)
         + (weights.w_novelty if first_visit else 0.0)
+        + shaping 
+        + (weights.w_cov_term * coverage_fraction if (terminated or timeout) else 0.0)
     )
