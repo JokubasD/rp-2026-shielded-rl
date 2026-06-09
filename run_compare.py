@@ -14,7 +14,9 @@ Usage:
       --size 20 --victims 6 --horizon 1000 --episodes 100
 """
 import argparse
+import contextlib
 import math
+import os
 import time
 from pathlib import Path
 
@@ -172,7 +174,8 @@ def run_episode(kind, size, victims, horizon, seed, model, lstm, deterministic, 
     sim.add_agent(agent)
 
     t0 = time.perf_counter()
-    sim.run(horizon)
+    with open(os.devnull, "w") as _dn, contextlib.redirect_stdout(_dn):
+        sim.run(horizon)  # silence the MPC agents' debug prints
     elapsed = time.perf_counter() - t0
 
     curr = sim.metrics.history[-1]
