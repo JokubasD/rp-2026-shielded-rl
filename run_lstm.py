@@ -96,10 +96,11 @@ def train_one(exp, out_root):
     )
     # NO VecFrameStack: the LSTM hidden state is the memory (obs stays 11-channel).
     vec_env = make_vec_env(SaREnv, n_envs=N_ENVS, vec_env_cls=SubprocVecEnv,
-                           env_kwargs=env_kwargs, monitor_kwargs=MONITOR_KWARGS)
+                           env_kwargs=env_kwargs, monitor_kwargs=MONITOR_KWARGS,
+                           seed=exp["seed"])
     vec_env = VecNormalize(vec_env, norm_obs=False, norm_reward=True, gamma=exp["gamma"])
 
-    model = make_rppo(vec_env, seed=0, gamma=exp["gamma"],
+    model = make_rppo(vec_env, seed=exp["seed"], gamma=exp["gamma"],
                       enable_critic_lstm=exp["enable_critic_lstm"])
     sr_cb = SuccessRateCallback(best_save_dir=out, vecnormalize=vec_env, verbose=0)
     callbacks = [sr_cb, EntCoefAnneal(start=0.03, end=0.005, total_timesteps=steps)]
@@ -116,7 +117,7 @@ def train_one(exp, out_root):
         return round(sum(dq) / len(dq), 4) if len(dq) else 0.0
 
     row = dict(
-        label=label, size=exp["size"], steps=steps, gamma=exp["gamma"],
+        label=label, size=exp["size"], steps=steps, gamma=exp["gamma"], seed=exp["seed"],
         rs=int(exp["random_start"]), horizon=exp["horizon"], victims=exp["num_victims"],
         critic_lstm=int(exp["enable_critic_lstm"]),
         final_coverage=mean(sr_cb._cov), final_victims=mean(sr_cb._vf),
@@ -128,22 +129,26 @@ def train_one(exp, out_root):
     return row
 
 
-def E(label, size=20, steps=2_000_000, gamma=0.999, random_start=True,
+def E(label, size=20, steps=2_000_000, gamma=0.999, random_start=True, seed=0,
       w_phi=30.0, w_cov=50.0, horizon=1000, num_victims=6, enable_critic_lstm=True):
     return dict(label=label, size=size, steps=steps, gamma=gamma, random_start=random_start,
-                w_phi=w_phi, w_cov=w_cov, horizon=horizon, num_victims=num_victims,
+                seed=seed, w_phi=w_phi, w_cov=w_cov, horizon=horizon, num_victims=num_victims,
                 enable_critic_lstm=enable_critic_lstm)
 
 
+# Day 2: confirm the LSTM win is real (3 seeds), test if it keeps climbing (4M),
+# and whether memory scales better than flat PPO (which hit only 0.53 on 25x25).
 EXPERIMENTS = [
-    E("L1_g0999_h1000_rs1", random_start=True),                       # mirrors best PPO row 08
-    E("L2_g0999_h1000_rs0", random_start=False),                      # fixed-start (real deployment)
-    E("L3_g0999_h1000_rs1_sharedlstm", enable_critic_lstm=False),     # faster variant
+    E("S0_2M", seed=0),                                              # reproduce seed-0 win (0.689)
+    E("S1_2M", seed=1),                                              # confirm across seeds
+    E("S2_2M", seed=2),
+    E("long_4M", seed=0, steps=4_000_000),                          # is LSTM converged at 2M or still climbing?
+    E("scale_25x25_3M", seed=0, size=25, horizon=900, num_victims=10, steps=3_000_000),  # does memory scale?
 ]
 
 
 def print_table(rows):
-    cols = ["label", "size", "gamma", "rs", "horizon", "victims", "critic_lstm",
+    cols = ["label", "size", "seed", "gamma", "rs", "horizon", "victims", "critic_lstm",
             "final_coverage", "final_victims", "final_success", "best_success", "minutes"]
     widths = {c: max(len(c), max((len(str(r.get(c, ""))) for r in rows), default=0)) for c in cols}
     line = "  ".join(c.ljust(widths[c]) for c in cols)
@@ -154,7 +159,7 @@ def print_table(rows):
 
 
 def write_csv(rows, path):
-    cols = ["label", "size", "steps", "gamma", "rs", "horizon", "victims", "critic_lstm",
+    cols = ["label", "size", "steps", "seed", "gamma", "rs", "horizon", "victims", "critic_lstm",
             "final_coverage", "final_victims", "final_success", "best_success", "minutes"]
     path.write_text("\n".join([",".join(cols)] +
                               [",".join(str(r.get(c, "")) for c in cols) for r in rows]))
