@@ -33,6 +33,7 @@ from src.rl.configs import sar_config
 SCAN = dict(decay=0.01, scan_accuracy=0.9, scan_radius=3, scan_falloff=True)
 START = (0, 0)
 N4 = ((-1, 0), (1, 0), (0, -1), (0, 1))
+HAZARD_VUL = 0.5  # shield treats cells with belief-vulnerability >= this as unsafe (avoid high-risk)
 
 
 # ---------------------------------------------------------------------------
@@ -95,12 +96,15 @@ class ShieldedAgent(TmpcAgent):
         self._mpc_latch = False
 
     def _in_safe_set(self, x, y) -> bool:
-        """A cell is safe if in-grid, traversable (not wall), no victim, not burning (per belief)."""
+        """A cell is safe if in-grid, traversable (not wall), no victim, not burning, and
+        not a high-risk hazard cell (per belief)."""
         if not (0 <= x < self.world_width and 0 <= y < self.world_height):
             return False
         if self.perception.traversability[y][x] != TraversabilityLevel.TRAVERSIBLE:
             return False
         if self.perception.victims[y][x] == 1:
+            return False
+        if float(self.perception.vulnerability[y][x]) >= HAZARD_VUL:
             return False
         return self.perception.fire[y][x] != FireLevel.BURNING
 
@@ -145,23 +149,25 @@ def make_agent(kind, size, model, lstm, deterministic, completion, start=START):
         return MpcAgent("mpc", x, y, size, size, **SCAN)
     if kind == "tmpc":
         return TmpcAgent("tmpc", x, y, size, size, **SCAN)
-    if kind in ("rl", "shield"):
+    if kind in ("rl", "shield", "shieldc"):
         ctrl = PolicyController(model, lstm, size, deterministic)
         if kind == "rl":
             return PolicyAgent("rl", x, y, size, ctrl)
-        return ShieldedAgent("shield", x, y, size, ctrl, stuck_patience=completion)
+        patience = completion if kind == "shieldc" else 0  # shield=safety-only, shieldc=+completion
+        return ShieldedAgent(kind, x, y, size, ctrl, stuck_patience=patience)
     raise ValueError(f"unknown agent kind: {kind}")
 
 
 def open_config(size, victims):
-    """Big-room, wide-tunnel, hazard-free map where the SDD-MPC can navigate."""
+    """Big-room, wide-tunnel map with hazards in the rooms but clear tunnels, so the
+    SDD-MPC can still navigate while safety (hazard avoidance) is actually tested."""
     return MapConfig(
         num_rooms=max(5, size // 5), num_victims=victims, num_agents=0,
         unconnected_probability=0.0,
         min_room_width=5, max_room_width=10, min_room_length=5, max_room_length=10,
         min_tunnel_thickness=2, max_tunnel_thickness=3,
         initial_fire_points=0, fire_spread_rate=0.0, fire_duration=0,
-        room_vulnerability_probability=0.0, room_vulnerability_severity=0.0,
+        room_vulnerability_probability=0.25, room_vulnerability_severity=0.3,
         tunnel_vulnerability_probability=0.0, tunnel_vulnerability_severity=0.0,
     )
 
@@ -190,7 +196,7 @@ def run_episode(kind, size, victims, horizon, seed, model, lstm, deterministic, 
         damage=float(curr.damage.get(agent, 0.0)),
         steps=steps,
         decision_ms=1000.0 * elapsed / steps,
-        override_frac=(agent.n_override / max(1, agent.n_decisions)) if kind == "shield" else 0.0,
+        override_frac=(agent.n_override / max(1, agent.n_decisions)) if kind in ("shield", "shieldc") else 0.0,
     )
 
 
@@ -226,7 +232,7 @@ def main():
 
     kinds = [k.strip() for k in args.agents.split(",")]
     model = None
-    if any(k in ("rl", "shield") for k in kinds):
+    if any(k in ("rl", "shield", "shieldc") for k in kinds):
         mp = Path(args.rl_model)
         if mp.suffix != ".zip":
             mp = next((mp / n for n in ("best_model.zip", "rppo_model.zip", "ppo_model.zip")
@@ -241,6 +247,12 @@ def main():
 
     out = Path("runs") / "compare"
     out.mkdir(parents=True, exist_ok=True)
+    # Record the exact settings used, for reproducibility / the report.
+    (out / "run_config.txt").write_text(repr(dict(
+        agents=args.agents, size=args.size, victims=args.victims, horizon=args.horizon,
+        episodes=args.episodes, seed=args.seed, open_map=bool(args.open), corridor=args.corridor,
+        completion=args.completion, start=start, rl_model=args.rl_model, lstm=bool(args.lstm),
+        deterministic=bool(args.deterministic), scan=SCAN, hazard_vul=HAZARD_VUL)))
     summary = out / "summary.csv"
     header = ",".join(["agent", "N"] + [f"{m}_mean" for m in METRICS] + [f"{m}_ci95" for m in METRICS])
     if not summary.exists():
@@ -257,7 +269,7 @@ def main():
             print(f"  ep {i+1}/{args.episodes} seed={args.seed+i}: cov={r['coverage']:.3f} "
                   f"vic={r['victims']:.3f} succ={int(r['success'])} "
                   f"coll={r['terr_coll']+r['vict_coll']} dmg={r['damage']:.1f}"
-                  + (f" ovr={r['override_frac']:.2f}" if kind == "shield" else ""), flush=True)
+                  + (f" ovr={r['override_frac']:.2f}" if kind in ("shield", "shieldc") else ""), flush=True)
 
         agg = {m: ci95([r[m] for r in rows]) for m in METRICS}
         per = [",".join(METRICS)] + [",".join(str(round(r[m], 4)) for m in METRICS) for r in rows]
