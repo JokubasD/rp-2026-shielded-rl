@@ -167,8 +167,8 @@ def open_config(size, victims):
         min_room_width=5, max_room_width=10, min_room_length=5, max_room_length=10,
         min_tunnel_thickness=2, max_tunnel_thickness=3,
         initial_fire_points=0, fire_spread_rate=0.0, fire_duration=0,
-        room_vulnerability_probability=0.25, room_vulnerability_severity=0.3,
-        tunnel_vulnerability_probability=0.0, tunnel_vulnerability_severity=0.0,
+        room_vulnerability_probability=0.5, room_vulnerability_severity=0.6,
+        tunnel_vulnerability_probability=0.4, tunnel_vulnerability_severity=0.5,
     )
 
 
