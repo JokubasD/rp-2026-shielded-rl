@@ -6,30 +6,34 @@ from src.constants import FireLevel
 @dataclass
 class RewardWeights:
     """Pure-RL weights"""
-    # Task-only weights: the pure-RL baseline is hazard-blind.
-    # Safety (fire, vulnerability) is the shield's job in the shielded variant.
-    w_v: float = 30.0          # + per new victim found
-    w_e: float = 15.0          # + newly-explored traversable cells (boosted: drives search)
+    # Active in deployment 
+    w_v: float = 10.0          # + per new victim found
     w_s: float = 0.005         # - per step (encourages speed)
-    w_c_t: float = 0.1         # - terrain collision (anti-walking-into-walls)
-    w_c_v: float = 1.0         # - victim collision (don't crush victims)
+    w_c_t: float = 0.1         # - terrain collision 
+    w_c_v: float = 1.0         # - victim collision   
+    w_succ: float = 50.0       # + on success 
+    # Potential-based shaping weight (Ng, Harada & Russell, 1999). Scales the
+    # potential Phi added to the reward via F = gamma*Phi(s') - Phi(s). 0.0 means off.
+    w_phi: float = 30.0
+    # Gives a bonus proportional to the coverage fraction at the end of the episode
+    w_cov_term: float = 50.0
+    # global coverage potential Phi = -w_phi*(1-coverage) 
+    # When on, set w_novelty = w_e = 0 
+    use_coverage_potential: bool = True
+
+    # Kept but inactive for now
+    w_e: float = 0.0          # + newly-explored traversable cells
     w_h_v: float = 0.0         # - vulnerability  -> ZEROED, shield handles
     w_h_f_flam: float = 0.0    # - Flammable      -> ZEROED, shield handles
     w_h_f_burn: float = 0.0    # - Burning        -> ZEROED, shield handles
-    w_succ: float = 50.0       # + on success (big bonus for solving the task)
-    w_tout: float = 15.0       # - on timeout
+    w_tout: float = 0.0       # - on timeout
     # Count-based intrinsic motivation: bonus the first time the agent
     # physically steps on a cell each episode. Movement-conditional, so it
     # directly breaks the "sit and wait" basin (Bellemare 2016; Andres 2025).
-    w_novelty: float = 0.3
-    # Potential-based shaping weight (Ng, Harada & Russell, 1999). Scales the
-    # potential Phi added to the reward via F = gamma*Phi(s') - Phi(s). 0.0 off.
-    w_phi: float = 0.0
-    # Gives a bonus proportional to the coverage fraction at the end of the episode
-    w_cov_term: float = 0.0
-    # global coverage potential Phi = -w_phi*(1-coverage) 
-    # When on, set w_novelty = w_e = 0 
-    use_coverage_potential: bool = False
+    w_novelty: float = 0.0
+    
+    
+    
 
 
 def compute_reward(
