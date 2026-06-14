@@ -1,15 +1,14 @@
-"""Shared SaR map configs (sar_config) for the training runner and the map previewer."""
+"""Shared SaR map configs for the training runner against all agents"""
 from src.constants import MapConfig
 
 
 def sar_config(size: int, num_victims: int = 10, corridor: int = 1) -> MapConfig:
-    """Balanced, fully-connected SaR map of the given size, num_victims victims, corridor-wide tunnels."""
     rooms = {20: 7, 25: 10, 30: 14}.get(size, max(6, size // 3))
     return MapConfig(
         num_rooms=rooms,
         num_victims=num_victims,
-        num_agents=0,                  # the RL env places its own agent at the start cell
-        unconnected_probability=0.0,   # everything reachable -> map is always solvable
+        num_agents=0,                  # the RL env will place the agent at the reset
+        unconnected_probability=0.0,   # everything reachable to make the map solvable
         min_room_width=3, max_room_width=5,
         min_room_length=3, max_room_length=5,
         min_tunnel_thickness=corridor, max_tunnel_thickness=corridor,
