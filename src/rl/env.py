@@ -17,39 +17,34 @@ from src.rl.frontier import nearest_frontier_distance, frontier_distance_field
 
 
 N_CHANNELS = 11
-N_STACK = 4  # frame-stack size for the policy (SB3 recommended approach for POMDPs)
+N_STACK = 4  # frame-stack size for the policy (only for non LSTM policy)
 
 
 def build_observation(agent) -> np.ndarray:
-    """Build the (N_CHANNELS, H, W) observation tensor from an agent's belief.
-
-    Shared by SaREnv (training) and visualization/inference scripts so the
-    policy always receives observations in the exact layout it trained on.
-    """
+    """Build the (N_CHANNELS, H, W) observation 'images' from an agent's belief."""
     p = agent.perception
     h, w = agent.world_height, agent.world_width
     obs = np.zeros((N_CHANNELS, h, w), dtype=np.float32)
-    obs[0] = p.traversability.matrix.astype(np.float32)
-    obs[1] = p.vulnerability.matrix.astype(np.float32)
-    obs[2] = p.victims.matrix.astype(np.float32)
-    obs[3] = p.agents.matrix.astype(np.float32)
+    obs[0] = p.traversability.matrix.astype(np.float32) # which cells are floor vs wall
+    obs[1] = p.vulnerability.matrix.astype(np.float32) # hazard level per cell
+    obs[2] = p.victims.matrix.astype(np.float32) # where agent saw victims
+    obs[3] = p.agents.matrix.astype(np.float32) # where the agent is now
     fire = p.fire.matrix.astype(int)
-    obs[4] = (fire == FireLevel.SAFE).astype(np.float32)
-    obs[5] = (fire == FireLevel.FLAMMABLE).astype(np.float32)
-    obs[6] = (fire == FireLevel.BURNING).astype(np.float32)
-    obs[7] = (fire == FireLevel.BURNT).astype(np.float32)
-    obs[8] = p.confidence.matrix.astype(np.float32)
-    obs[9] = agent.explored.astype(np.float32)
-    # Distance-to-nearest-unexplored field (the MPC's frontier signal, from belief).
+    obs[4] = (fire == FireLevel.SAFE).astype(np.float32)    # safe 
+    obs[5] = (fire == FireLevel.FLAMMABLE).astype(np.float32) # flammable
+    obs[6] = (fire == FireLevel.BURNING).astype(np.float32) # burning
+    obs[7] = (fire == FireLevel.BURNT).astype(np.float32) # burnt
+    obs[8] = p.confidence.matrix.astype(np.float32) # the scan certainty per cell that decays over time
+    obs[9] = agent.explored.astype(np.float32) # 0 - cell not scanned 1 - cell scaned at some point
+    # Distance-to-nearest-unexplored field (a perceptual frontier gradient, from belief).
     trav = (p.traversability.matrix == TraversabilityLevel.TRAVERSIBLE)
-    obs[10] = frontier_distance_field(agent.explored, trav)
+    obs[10] = frontier_distance_field(agent.explored, trav) # BFS distance to nearest unexplored 
     return obs
 
 
 class SaREnv(gym.Env):
     """
-    Gymnasium environment wrapping the search-and-rescue Simulator for
-    single-agent pure-RL training.
+    Gymnasium environment wrapping the search-and-rescue Simulator for single-agent pure-RL training.
     """
 
     metadata = {"render_modes": []}
@@ -74,7 +69,8 @@ class SaREnv(gym.Env):
         super().__init__()
         self.width = width
         self.height = height
-        # "Balanced" 40x40 config: enough rooms to fill the grid, slow fire, light hazards.
+        # "Balanced" 40x40 config: enough rooms to fill the grid, slow fire, light hazards. (not same in deployment
+        # I pass sar_config(20/25/30) to overwrite)
         self.config = config or MapConfig(
             num_rooms=8, num_victims=3, num_agents=0,
             min_room_width=5, max_room_width=10,
@@ -85,7 +81,6 @@ class SaREnv(gym.Env):
             tunnel_vulnerability_probability=0.2, tunnel_vulnerability_severity=0.3,
         )
         if self.config.num_agents != 0:
-            # The wrapper places its own RLAgent.
             raise ValueError("SaREnv places its own agent; set config.num_agents=0")
 
         self.max_episode_steps = max_episode_steps
@@ -99,9 +94,9 @@ class SaREnv(gym.Env):
         self.weights = reward_weights or RewardWeights()
         # Discount factor for potential-based shaping.
         self.gamma = gamma
-        # Egocentric crop size (odd, agent-centred). 0 = full-grid observation.
+        # Egocentric crop size. 0 = full-grid observation.
         self.ego_crop = ego_crop
-        # Random traversable start cell each reset (breaks fixed-corner overfit).
+        # Random traversable start cell each reset (to break the corner overfit).
         self.random_start = random_start
 
         obs_h, obs_w = (ego_crop, ego_crop) if ego_crop > 0 else (height, width)
@@ -125,7 +120,7 @@ class SaREnv(gym.Env):
         self.sim.generate_ground_truth(self.config, seed=seed)
         sx, sy = self.start_x, self.start_y
         if self.random_start:
-            # Pick a uniformly random traversable, victim-free cell as the start.
+            # random cell for start point
             trav = (self.sim.ground_truth.traversability.matrix == TraversabilityLevel.TRAVERSIBLE)
             free = trav & (self.sim.ground_truth.victims.matrix != VictimPresence.PRESENT)
             ys, xs = np.nonzero(free)
@@ -141,11 +136,11 @@ class SaREnv(gym.Env):
             **self.agent_kwargs,
         )
         self.sim.add_agent(self.agent)
-        # First scan so perception is populated for the first observation.
+        # first scan so perception is populated for the first observation.
         self.agent.scan(self.sim.ground_truth)
         self.step_count = 0
         self._prev_explored = int(self.agent.explored.sum())
-        # Reset visit mask; mark the start cell as already visited so the first
+        # Reset visit mask, mark the start cell as already visited so the first
         # novelty bonus is only earned when the agent steps onto a NEW cell.
         self.visited = np.zeros((self.height, self.width), dtype=bool)
         self.visited[self.agent.y, self.agent.x] = True
@@ -162,7 +157,8 @@ class SaREnv(gym.Env):
         history = self.sim.metrics.history
         curr = history[-1]
         prev = history[-2] if len(history) >= 2 else None
-
+        
+        # since metrics are cumulative we compute the deltas by subtracting the previous step's metrics from current
         if prev is None:
             delta_victims = curr.victims_found
             delta_terr = curr.terrain_collisions.get(self.agent, 0)
@@ -185,16 +181,16 @@ class SaREnv(gym.Env):
         v_at = float(self.sim.ground_truth.vulnerability[self.agent.y][self.agent.x])
         f_at = int(self.sim.ground_truth.fire[self.agent.y][self.agent.x])
 
-        # Count-based novelty: is the agent on a cell it has never occupied this episode?
+        # Count-based novelty, checking if agent has been on current cell before or not
         cell = (self.agent.y, self.agent.x)
         first_visit = not bool(self.visited[cell])
         self.visited[cell] = True
 
         terminated = curr.outcome == RunOutcome.SUCCESS
-        # hit the step budget (reported in gymnasium's 4th step() return value)
+        # hit the step budget
         timeout = (self.step_count >= self.max_episode_steps) and not terminated
 
-        # Potential-based frontier shaping (Ng 1999). Phi is forced to 0 at
+        # Potential-based shaping (Ng 1999). Phi is forced to 0 at
         # terminal states (success or timeout) so the shaping cannot alter the
         # optimal policy, only accelerate learning.
         phi_next = 0.0 if (terminated or timeout) else self._potential()
@@ -232,9 +228,7 @@ class SaREnv(gym.Env):
         return obs
 
     def _egocentric_crop(self, obs: np.ndarray) -> np.ndarray:
-        """Crop a fixed K x K window centred on the agent (translation-invariant);
-        out-of-bounds padded as wall/explored/far-frontier so edges look like solid bounds.
-        """
+        """Crop a fixed K x K window centred on the agent. Out-of-bounds padded so edges look like solid bounds."""
         k = self.ego_crop
         r = k // 2
         pad = np.zeros(N_CHANNELS, dtype=np.float32)
@@ -246,8 +240,7 @@ class SaREnv(gym.Env):
         return padded[:, ay:ay + k, ax:ax + k].astype(np.float32)
 
     def _frontier_potential(self) -> float:
-        """Following Ng-1999, compute a potential using BFS to find the frontier distance
-        """
+        """Following Ng-1999, compute a potential using BFS to find the frontier distance (not used in deployed version)"""
         if self.weights.w_phi == 0.0 or self.agent is None:
             return 0.0
         traversable = (
@@ -280,6 +273,7 @@ class SaREnv(gym.Env):
         return self._frontier_potential()
 
     def _build_info(self, curr) -> dict:
+        # for logging and run analysis 
         if curr is None:
             return {
                 "outcome": RunOutcome.IN_PROGRESS.value,
@@ -304,8 +298,6 @@ class SaREnv(gym.Env):
 
 
 if __name__ == "__main__":
-    # Smoke check: random actions for 50 steps, prove the env runs end-to-end.
-    # Use the v5 coverage path here so the new shaping is exercised too.
     env = SaREnv(reward_weights=RewardWeights(
         w_phi=8.0, w_cov_term=20.0, use_coverage_potential=True))
     obs, info = env.reset(seed=42)
