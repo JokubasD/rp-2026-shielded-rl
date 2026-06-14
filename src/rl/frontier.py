@@ -1,8 +1,8 @@
 """
 Utility function to compute the BFS distance from the agent to the nearest
-unexplored region.
-    
-TODO for refactor - Move this to src/util/frontier.py and import it from both places 
+unexplored region. 
+This reuses sub-project 1's MPC idea, but reimplemented to adapt to the agents belief
+state so that the RL policy can read it as an observation channel.
 """
 from collections import deque
 
@@ -34,7 +34,7 @@ def nearest_frontier_distance(
 
 
 def frontier_distance_field(explored: np.ndarray, traversable: np.ndarray) -> np.ndarray:
-    """Normalised [0,1] BFS distance-to-nearest-unexplored field from belief (the MPC's frontier signal, as an obs channel)."""
+    """Normalised [0,1] BFS distance to nearest unexplored field from belief."""
     h, w = explored.shape
     dist = np.full((h, w), -1, dtype=np.int32)
     q: deque = deque()
