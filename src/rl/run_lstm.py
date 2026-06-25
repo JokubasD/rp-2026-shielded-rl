@@ -34,6 +34,7 @@ from src.rl.reward import RewardWeights
 from src.rl.train import GridCNN
 from src.rl.callbacks import SuccessRateCallback, EntCoefAnneal
 from src.rl.configs import sar_config
+from src.rl.run_compare import open_config  # train on the SAME open maps we evaluate on
 
 N_ENVS = int(os.environ.get("N_ENVS", "32"))
 N_STEPS = int(os.environ.get("N_STEPS", "512"))   # shorter rollout (recurrent is memory-heavy)
@@ -91,7 +92,7 @@ def train_one(exp, out_root):
     t0 = time.time()
     env_kwargs = dict(
         width=exp["size"], height=exp["size"], max_episode_steps=exp["horizon"],
-        config=sar_config(exp["size"], num_victims=exp["num_victims"], corridor=1),
+        config=open_config(exp["size"], exp["num_victims"]),
         reward_weights=reward, gamma=exp["gamma"], random_start=exp["random_start"],
     )
     # NO VecFrameStack: the LSTM hidden state is the memory (obs stays 11-channel).
@@ -120,8 +121,8 @@ def train_one(exp, out_root):
         label=label, size=exp["size"], steps=steps, gamma=exp["gamma"], seed=exp["seed"],
         rs=int(exp["random_start"]), horizon=exp["horizon"], victims=exp["num_victims"],
         critic_lstm=int(exp["enable_critic_lstm"]),
-        final_coverage=mean(sr_cb._cov), final_victims=mean(sr_cb._vf),
-        final_success=mean(sr_cb._succ), best_success=round(sr_cb.best, 4),
+        final_coverage=mean(sr_cb._coverage_frac), final_victims=mean(sr_cb._victims_frac),
+        final_success=mean(sr_cb._success), best_success=round(sr_cb.best, 4),
         minutes=round((time.time() - t0) / 60, 1),
     )
     del model, vec_env
@@ -144,6 +145,14 @@ EXPERIMENTS = [
     E("S2_2M", seed=2),
     E("long_4M", seed=0, steps=4_000_000),                          # is LSTM converged at 2M or still climbing?
     E("scale_25x25_3M", seed=0, size=25, horizon=900, num_victims=10, steps=3_000_000),  # does memory scale?
+]
+
+# 20/25/30 scaling study (retrain-per-size; horizon ~ map area, victims ~ area).
+# Select this set instead of EXPERIMENTS with the env var SCALE=1.
+SCALE_EXPERIMENTS = [
+    E("scale_20x20", seed=0, size=20, horizon=1000, num_victims=6,  steps=2_000_000),
+    E("scale_25x25", seed=0, size=25, horizon=1400, num_victims=8,  steps=3_000_000),
+    E("scale_30x30", seed=0, size=30, horizon=2000, num_victims=10, steps=4_000_000),
 ]
 
 
@@ -169,9 +178,10 @@ def main():
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_root = Path("runs") / f"lstm_{ts}"
     out_root.mkdir(parents=True, exist_ok=True)
-    exps = EXPERIMENTS[:FIRST] if FIRST else EXPERIMENTS
+    base = SCALE_EXPERIMENTS if os.environ.get("SCALE") else EXPERIMENTS
+    exps = base[:FIRST] if FIRST else base
     print(f"[lstm] {len(exps)} experiments, n_envs={N_ENVS}, n_steps={N_STEPS}, "
-          f"smoke={SMOKE}, out={out_root}", flush=True)
+          f"smoke={SMOKE}, scale={bool(os.environ.get('SCALE'))}, out={out_root}", flush=True)
 
     rows = []
     t_all = time.time()

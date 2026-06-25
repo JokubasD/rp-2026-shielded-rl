@@ -2,15 +2,15 @@
 SAME held-out maps, collect identical metrics, aggregate to mean +/- 95% CI.
 
 Agents (all on identical seeded maps, same entrance, same sensing, same metrics):
-  rl     - the trained policy (frame-stack PPO or LSTM), acting in the sim
-  mpc    - exhaustive-search MPC (sub-project 1)
-  tmpc   - tube / SDD-MPC (sub-project 1), unmodified
-  shield - SHIELDED RL (this work): take the RL action if its slip-tube is safe,
-           otherwise defer to the SDD-MPC backup (tmpc), unmodified.
+  rl     - the trained RL policy, acting in the sim
+  mpc    - exhaustive-search MPC
+  tmpc   - tube / SDD-MPC
+  shield - shielded RL: take the RL action if its slip-tube is safe,
+           otherwise defer to the SDD-MPC backup.
 
 Usage:
-  uv run python run_compare.py --agents mpc,tmpc --size 20 --victims 6 --horizon 300 --episodes 30
-  uv run python run_compare.py --agents rl,shield --rl-model runs/lstm_*/L1_g0999_h1000_rs1 --lstm \
+  uv run python -m src.rl.run_compare --agents mpc,tmpc --size 20 --victims 6 --horizon 300 --episodes 30
+  uv run python -m src.rl.run_compare --agents rl,shield --rl-model runs/lstm_*/L1_g0999_h1000_rs1 --lstm \
       --size 20 --victims 6 --horizon 1000 --episodes 100
 """
 import argparse
@@ -33,7 +33,7 @@ from src.rl.configs import sar_config
 SCAN = dict(decay=0.01, scan_accuracy=0.9, scan_radius=3, scan_falloff=True)
 START = (0, 0)
 N4 = ((-1, 0), (1, 0), (0, -1), (0, 1))
-HAZARD_VUL = 0.5  # shield treats cells with belief-vulnerability >= this as unsafe (avoid high-risk)
+HAZARD_VUL = 0.5  # cells with belief-vulnerability >= this are treated as unsafe
 
 
 # ---------------------------------------------------------------------------
@@ -80,24 +80,21 @@ class PolicyAgent(Agent):
 
 
 class ShieldedAgent(TmpcAgent):
-    """Shielded RL (this work): execute the RL action if its slip-tube is safe,
-    else defer to the SDD-MPC backup (TmpcAgent.get_action), which is left untouched."""
+    """Run the RL action if its slip-tube is safe, else defer to the SDD-MPC backup."""
 
     def __init__(self, name, x, y, size, controller, stuck_patience=0):
         super().__init__(name, x, y, size, size, **SCAN)
         self.controller = controller
         self.n_decisions = 0
         self.n_override = 0
-        # Completion fallback: after `stuck_patience` steps with no new exploration,
-        # latch control to the SDD-MPC backup so it finishes the sweep (0 = disabled).
+        # After this many steps with no new exploration, hand off to the MPC (0 = off).
         self.stuck_patience = stuck_patience
         self._best_explored = 0
         self._stale = 0
         self._mpc_latch = False
 
     def _in_safe_set(self, x, y) -> bool:
-        """A cell is safe if in-grid, traversable (not wall), no victim, not burning, and
-        not a high-risk hazard cell (per belief)."""
+        """Safe = in-grid, traversable, no victim, not burning, not a high-risk hazard cell."""
         if not (0 <= x < self.world_width and 0 <= y < self.world_height):
             return False
         if self.perception.traversability[y][x] != TraversabilityLevel.TRAVERSIBLE:
@@ -109,8 +106,7 @@ class ShieldedAgent(TmpcAgent):
         return self.perception.fire[y][x] != FireLevel.BURNING
 
     def _shield_safe(self, action: AgentAction) -> bool:
-        """Slip-aware: the target must be safe, and every TRAVERSABLE neighbour the
-        agent could slip into must be safe (walls are not slip targets, so excluded)."""
+        """Safe if the target and every traversable neighbour it could slip into are safe."""
         tx, ty = self._target_cell(action)
         if not self._in_safe_set(tx, ty):
             return False
@@ -124,7 +120,7 @@ class ShieldedAgent(TmpcAgent):
 
     def get_action(self) -> AgentAction:
         self.n_decisions += 1
-        # Completion fallback: detect a stall (no newly explored cell for K steps).
+        # Detect a stall (no newly explored cell for stuck_patience steps).
         if self.stuck_patience > 0 and not self._mpc_latch:
             explored = int(self.explored.sum())
             if explored > self._best_explored:
@@ -132,7 +128,7 @@ class ShieldedAgent(TmpcAgent):
             else:
                 self._stale += 1
                 if self._stale >= self.stuck_patience:
-                    self._mpc_latch = True  # hand off to the SDD-MPC to finish
+                    self._mpc_latch = True  # hand off to the MPC to finish
         if self._mpc_latch:
             self.n_override += 1
             return super().get_action()
@@ -140,7 +136,7 @@ class ShieldedAgent(TmpcAgent):
         if self._shield_safe(rl_action):
             return rl_action
         self.n_override += 1
-        return super().get_action()  # SDD-MPC backup (unmodified)
+        return super().get_action()  # MPC backup
 
 
 def make_agent(kind, size, model, lstm, deterministic, completion, start=START):
@@ -159,16 +155,16 @@ def make_agent(kind, size, model, lstm, deterministic, completion, start=START):
 
 
 def open_config(size, victims):
-    """Big-room, wide-tunnel map with hazards in the rooms but clear tunnels, so the
-    SDD-MPC can still navigate while safety (hazard avoidance) is actually tested."""
+    """Big-room, wide-tunnel map: hazards in the rooms but clear tunnels, fire on.
+    Low room severity keeps most hazard scannable so the planners don't stall."""
     return MapConfig(
-        num_rooms=max(5, size // 5), num_victims=victims, num_agents=0,
+        num_rooms=max(6, size // 3), num_victims=victims, num_agents=0,
         unconnected_probability=0.0,
-        min_room_width=5, max_room_width=10, min_room_length=5, max_room_length=10,
-        min_tunnel_thickness=2, max_tunnel_thickness=3,
-        initial_fire_points=0, fire_spread_rate=0.0, fire_duration=0,
-        room_vulnerability_probability=0.5, room_vulnerability_severity=0.6,
-        tunnel_vulnerability_probability=0.4, tunnel_vulnerability_severity=0.5,
+        min_room_width=3, max_room_width=6, min_room_length=3, max_room_length=6,
+        min_tunnel_thickness=3, max_tunnel_thickness=3,
+        initial_fire_points=2, fire_spread_rate=0.03, fire_duration=8,
+        room_vulnerability_probability=0.35, room_vulnerability_severity=0.25,
+        tunnel_vulnerability_probability=0.0, tunnel_vulnerability_severity=0.0,
     )
 
 
@@ -179,10 +175,23 @@ def run_episode(kind, size, victims, horizon, seed, model, lstm, deterministic, 
     agent = make_agent(kind, size, model, lstm, deterministic, completion, start)
     sim.add_agent(agent)
 
-    t0 = time.perf_counter()
+    # Decision time = just the get_action call (policy or MPC), excluding scan and physics.
+    # Wrap get_action so the timer brackets exactly that call, averaged over all steps.
+    agent._decide_s = 0.0
+    agent._decide_n = 0
+    _orig_get = agent.get_action
+
+    def _timed_get(_orig=_orig_get, _a=agent):
+        _t = time.perf_counter()
+        act = _orig()
+        _a._decide_s += time.perf_counter() - _t
+        _a._decide_n += 1
+        return act
+
+    agent.get_action = _timed_get
+
     with open(os.devnull, "w") as _dn, contextlib.redirect_stdout(_dn):
         sim.run(horizon)  # silence the MPC agents' debug prints
-    elapsed = time.perf_counter() - t0
 
     curr = sim.metrics.history[-1]
     total = int(curr.total_victims) or 1
@@ -194,8 +203,9 @@ def run_episode(kind, size, victims, horizon, seed, model, lstm, deterministic, 
         terr_coll=int(curr.terrain_collisions.get(agent, 0)),
         vict_coll=int(curr.victim_collisions.get(agent, 0)),
         damage=float(curr.damage.get(agent, 0.0)),
+        infeasible=int(getattr(agent, "infeasible_states", 0)),  # MPC stalls (0 for pure RL)
         steps=steps,
-        decision_ms=1000.0 * elapsed / steps,
+        decision_ms=1000.0 * agent._decide_s / max(1, agent._decide_n),
         override_frac=(agent.n_override / max(1, agent.n_decisions)) if kind in ("shield", "shieldc") else 0.0,
     )
 
@@ -208,7 +218,7 @@ def ci95(xs):
 
 
 METRICS = ["coverage", "victims", "success", "terr_coll", "vict_coll", "damage",
-           "steps", "decision_ms", "override_frac"]
+           "infeasible", "steps", "decision_ms", "override_frac"]
 
 
 def main():
@@ -227,6 +237,7 @@ def main():
                     help="shield: hand off to SDD-MPC after K steps with no new exploration (0=safety-only)")
     ap.add_argument("--start", default="0,0", help="start cell 'x,y' or 'center' (corner traps the tube MPC)")
     ap.add_argument("--open", action="store_true", help="big-room hazard-free maps where the SDD-MPC navigates")
+    ap.add_argument("--outdir", default="runs/compare", help="output dir (set per-shard for parallel runs)")
     args = ap.parse_args()
     start = (args.size // 2, args.size // 2) if args.start == "center" else tuple(int(v) for v in args.start.split(","))
 
@@ -245,7 +256,7 @@ def main():
             model = PPO.load(mp, device="auto")
         print(f"[compare] loaded {'LSTM' if args.lstm else 'PPO'} model: {mp}", flush=True)
 
-    out = Path("runs") / "compare"
+    out = Path(args.outdir)
     out.mkdir(parents=True, exist_ok=True)
     # Record the exact settings used, for reproducibility / the report.
     (out / "run_config.txt").write_text(repr(dict(
@@ -268,7 +279,7 @@ def main():
             rows.append(r)
             print(f"  ep {i+1}/{args.episodes} seed={args.seed+i}: cov={r['coverage']:.3f} "
                   f"vic={r['victims']:.3f} succ={int(r['success'])} "
-                  f"coll={r['terr_coll']+r['vict_coll']} dmg={r['damage']:.1f}"
+                  f"coll={r['terr_coll']+r['vict_coll']} dmg={r['damage']:.1f} inf={r['infeasible']}"
                   + (f" ovr={r['override_frac']:.2f}" if kind in ("shield", "shieldc") else ""), flush=True)
 
         agg = {m: ci95([r[m] for r in rows]) for m in METRICS}

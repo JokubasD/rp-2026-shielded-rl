@@ -11,9 +11,9 @@ survive), and a formatted table prints at the end. Each run also saves its
 best-by-success model in its own subdir.
 
 Usage:
-  N_ENVS=64 uv run python run_experiments.py            # full batch (~2.5-3 h)
-  N_ENVS=64 uv run python run_experiments.py --smoke    # 150k steps each (pipeline check)
-  N_ENVS=4  uv run python run_experiments.py --smoke --first 2   # tiny local validation
+  N_ENVS=64 uv run python -m src.rl.run_experiments            # full batch (~2.5-3 h)
+  N_ENVS=64 uv run python -m src.rl.run_experiments --smoke    # 150k steps each (pipeline check)
+  N_ENVS=4  uv run python -m src.rl.run_experiments --smoke --first 2   # tiny local validation
 """
 import gc
 import os
@@ -32,6 +32,7 @@ from src.rl.reward import RewardWeights
 from src.rl.train import GridCNN
 from src.rl.callbacks import SuccessRateCallback, EntCoefAnneal
 from src.rl.configs import sar_config
+from src.rl.run_compare import open_config  # train on the SAME open maps we evaluate on
 
 N_ENVS = int(os.environ.get("N_ENVS", "32"))
 SMOKE = "--smoke" in sys.argv
@@ -91,7 +92,7 @@ def train_one(exp, out_root):
     t0 = time.time()
     env_kwargs = dict(
         width=exp["size"], height=exp["size"], max_episode_steps=exp["horizon"],
-        config=sar_config(exp["size"], num_victims=exp["num_victims"], corridor=exp["corridor"]),
+        config=open_config(exp["size"], exp["num_victims"]),
         reward_weights=reward, gamma=exp["gamma"], random_start=exp["random_start"],
     )
     vec_env = make_vec_env(SaREnv, n_envs=N_ENVS, vec_env_cls=SubprocVecEnv,
@@ -120,8 +121,8 @@ def train_one(exp, out_root):
         label=label, size=exp["size"], steps=steps, gamma=exp["gamma"],
         rs=int(exp["random_start"]), w_phi=exp["w_phi"], w_cov=exp["w_cov"],
         horizon=exp["horizon"], victims=exp["num_victims"], pot=("cov" if exp["use_cov_pot"] else "front"),
-        final_success=mean(sr_cb._succ), final_victims=mean(sr_cb._vf),
-        final_coverage=mean(sr_cb._cov), best_success=round(sr_cb.best, 4),
+        final_success=mean(sr_cb._success), final_victims=mean(sr_cb._victims_frac),
+        final_coverage=mean(sr_cb._coverage_frac), best_success=round(sr_cb.best, 4),
         minutes=round((time.time() - t0) / 60, 1),
     )
     del model, vec_env
@@ -158,6 +159,14 @@ EXPERIMENTS = [
     E("13_g0999_rs1_30x30", size=30, gamma=0.999, random_start=True, horizon=1200, steps=4_000_000, num_victims=10),
 ]
 
+# Single frame-stack PPO matched to the LSTM's 20x20 config (gamma 0.999, random start,
+# horizon 1000, 6 victims) -- the "no LSTM" baseline for the memory ablation table.
+# Select this instead of EXPERIMENTS with the env var ABLATE=1.
+ABLATION = [
+    E("ablate_framestack_20x20", size=20, gamma=0.999, random_start=True,
+      horizon=1000, num_victims=6, steps=2_000_000),
+]
+
 
 def print_table(rows):
     cols = ["label", "size", "gamma", "rs", "victims", "pot", "horizon",
@@ -183,8 +192,10 @@ def main():
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_root = Path("runs") / f"batch_{ts}"
     out_root.mkdir(parents=True, exist_ok=True)
-    exps = EXPERIMENTS[:FIRST] if FIRST else EXPERIMENTS
-    print(f"[batch] {len(exps)} experiments, n_envs={N_ENVS}, smoke={SMOKE}, out={out_root}", flush=True)
+    base = ABLATION if os.environ.get("ABLATE") else EXPERIMENTS
+    exps = base[:FIRST] if FIRST else base
+    print(f"[batch] {len(exps)} experiments, n_envs={N_ENVS}, smoke={SMOKE}, "
+          f"ablate={bool(os.environ.get('ABLATE'))}, out={out_root}", flush=True)
 
     rows = []
     t_all = time.time()
